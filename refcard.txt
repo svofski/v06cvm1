@@ -1,0 +1,116 @@
+                        Full Dec PDP11 Opcode List
+                        ==========================
+               File: Docs.Comp.PDP11.OpList - Update: 0.10
+                 Author: J.G.Harston - Date: 08-08-2001
+
+Octal   Mnemonic        Octal   Mnemonic        Octal   Mnemonic
+------------------------------------------------------------------------
+000000  HALT                                    1000xxx BPL disp
+000001  WAIT            0004xxx BR  disp        1004xxx BMI disp
+000002  RTI             0010xxx BNE disp        1010xxx BHI disp
+000003  BPT             0014xxx BEQ disp        1014xxx BLS disp
+000004  IOT             0020xxx BGE disp        1020xxx BVC disp
+000005  RESET           0024xxx BLT disp        1024xxx BVS disp
+000006  RTT             0030xxx BGT disp        1030xxx BCC disp
+000007  MFPT            0034xxx BLE disp        1034xxx BCS disp
+                  
+00001x  -               004rdd  JSR r,dd        1040xxx EMT  xxx
+00002x  -                                       1044xxx TRAP xxx
+00003x  -          
+00004x  -               0050dd  CLR  dd         1050dd  CLRB dd
+00005x  -               0051dd  COM  dd         1051dd  COMB dd
+00006x  -               0052dd  INC  dd         1052dd  INCB dd
+00007x  -               0053dd  DEC  dd         1053dd  DECB dd
+                        0054dd  NEG  dd         1054dd  CLRB dd
+0001dd  JMP  dd         0055dd  ADC  dd         1055dd  ADCB dd
+00020r  RTS  r          0056dd  SBC  dd         1056dd  SBCB dd
+00021r  -               0057dd  TST  dd         1057dd  TSTB dd
+00022r  -           
+00023n  SPL  n          0060dd  ROR  dd         1060dd  RORB dd
+                        0061dd  ROL  dd         1061dd  ROLB dd
+000240  NOP             0062dd  ASR  dd         1062dd  ASRB dd
+000241  CLC             0063dd  ASL  dd         1063dd  ASLB dd
+000242  CLV             0064nn  MARK nn         1064ss  MTPS ss
+000243  CLC:CLV         0065ss  MFPI ss         1065ss  MFPD ss
+000244  CLZ             0066dd  MTPI dd         1066dd  MTPD dd
+000245  CLC:CLZ         0067dd  SXT  dd         1067dd  MFPS dd
+000246  CLV:CLZ         
+000247  CLC:CLV:CLZ     
+
+000250  CLN             0070dd  CSM  dd         1070xx  -
+000251  CLN:CLC         0071dd  -               1071xx  -
+000252  CLN:CLV         0072dd  TSTSET dd       1072xx  -
+000253  CLN:CLC:CLV     0073dd  WRTLCK dd       1073xx  -
+000254  CLN:CLZ         0074dd  -               1074xx  -
+000255  CLN:CLC:CLZ     0075dd  -               1075xx  -
+000256  CLN:CLV:CLZ     0076dd  -               1076xx  -
+000257  CCC             0077dd  -               1077xx  -
+
+000260  SNOP
+000261  SEC             01ssdd  MOV  ss,dd      11ssdd  MOVB ss,dd
+000262  SEV             02ssdd  CMP  ss,dd      12ssdd  CMPB ss,dd
+000263  SEC:SEV         03ssdd  BIT  ss,dd      13ssdd  BITB ss,dd
+000264  SEZ             04ssdd  BIC  ss,dd      14ssdd  BICB ss,dd
+000265  SEC:SEZ         05ssdd  BIS  ss,dd      15ssdd  BISB ss,dd
+000266  SEV:SEZ         06ssdd  ADD  ss,dd      16ssdd  SUB  ss,dd
+000267  SEC:SEV:SEZ                             
+
+000270  SEN             070rss  MUL  r,ss       17xxxx  FP copro
+000271  SEN:SEC         071rss  DIV  r,ss
+000272  SEN:SEV         072rss  ASH  r,ss       170011  SETD
+000273  SEN:SEC:SEV     073rss  ASHC r,ss
+000274  SEN:SEZ         074rss  XOR  r,ss
+000275  SEN:SEC:SEZ     
+000276  SEN:SEV:SEZ     07500r  FADD r
+000277  SCC             07501r  FSUB r         
+                        07502r  FMUL r         
+0003dd  SWAB dd         07503r  FDIV r         
+                        07504r  -              
+                        07505r  -      FP      
+                        07506r  - instructions 
+                        07507r  -              
+
+                        075xxx  FIS instructions
+                        076xxx  CIS instructions  
+                        077rnn  SOB back        
+------------------------------------------------------------------------
+
+r    - register 0-7
+n    - number 0-7
+nn   - number 00-77
+nnn  - number 000-377
+ss   - data source
+dd   - data destination
+disp - branch displacement -128*2 to +127*2
+back - branch displacement backwards
+
+Addressing modes
+----------------
+Data referenced in ss and dd is encoded as mr where m is the addressing
+mode and r is a register R0 to R7.
+
+ Mode   Symbol   Name                      Example
+  0       Rn     Register                  R2
+  1      (Rn)    Register deferred         (R3)
+  2     (Rn)+    Auto-increment            (R5)+
+  3     @(Rn)+   Auto-increment deferred   @(R0)+
+  4     -(Rn)    Auto-decrement            -(SP)
+  5     @-(Rn)   Auto-decrement deferred   @-(R1)
+  6     X(Rn)    Index                     table(R0)
+  7     @X(Rn)   Index deferred            @offset(R1)
+
+When register 7 - the program counter - is used, some addressing modes
+have alternative names.
+
+ Mode   Symbol   Name                      Example        Equivalent to
+  2       #n     Immediate                 #27            (R7)+:EQUW n
+  3       @#n    Absolute                  @#ioport       @(R7)+:EQUW n
+  6        A     Relative                  lineptr        A-$-2(R7)
+  7       @A     Relative deferred         @sysvar        @A-$-2(R7)
+
+References
+----------
+"Assembly Language for the PDP-11", Kapps & Stafford
+"Introduction to the PDP-11 and its Assembly Language", Frank
+http://wwwlehre.dhbw-stuttgart.de/~helbig/os/pdp11/doc/cpu.pdf
+

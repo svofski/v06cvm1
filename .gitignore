@@ -1,0 +1,5 @@
+*.swp
+*.obj
+testbench/vm1_opcodes.h
+testbench/i8080_test
+dirimage.fdd
