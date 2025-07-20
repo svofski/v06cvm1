@@ -192,13 +192,17 @@ test_mov1_pgm:
         ; jsr
         .dw 012706q       ;       mov #400, r6
         .dw 000400q       ;
-        .dw 012705q       ;       mov #123456, r5
+        .dw 012705q
         .dw 123456q
         .dw 004567q       ;       jsr r5, feck
-        .dw 000002q       ;     
+        .dw 000006q
+        .dw 004767q       ;       jsr r7, duck
+        .dw 000004q
         .dw 000000q       ;       halt
         .dw 000205q       ; feck: rts r5
+        .dw 000207q       ; duck: rts r7
 #endif
+
 
 #ifdef TEST_FLAGSR
         .dw 000257q       ; CCC clear all
