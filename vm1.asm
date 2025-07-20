@@ -1,5 +1,5 @@
         .org $100
-        
+
         ; test load op16
         ;di
         ;xra a
@@ -12,7 +12,8 @@
 ; load DE from REGISTER mem, addr in HL
 #define LOAD_DE_FROM_HL_REG mov e, m \ inx h \ mov d, m
 ; load DE from GUEST mem, addr in HL
-#define LOAD_DE_FROM_HL mov e, m \ inx h \ mov d, m
+#define LOAD_DE_FROM_HL     mov e, m \ inx h \ mov d, m
+#define LOAD_BC_FROM_HL     mov c, m \ inx h \ mov b, m
 #define LOAD_BC_FROM_HL_REG mov c, m \ inx h \ mov b, m
 ; load E from GUEST mem, addr in HL
 #define LOAD_E_FROM_HL mov e, m
@@ -20,15 +21,27 @@
 #define STORE_BC_TO_HL_REG mov m, c \ inx h \ mov m, b
 #define STORE_C_TO_HL_REG  mov m, c
 #define STORE_C_TO_HL mov m, c
+#define STORE_A_TO_HL mov m, a
 #define STORE_DE_TO_HL mov m, e \ inx h \ mov m, d
 #define STORE_DE_TO_HL_REG mov m, e \ inx h \ mov m, d
 #define STORE_E_TO_HL  mov m, e
 #define STORE_DE_TO_HL_REG_REVERSE mov m, d \ dcx h \ mov m, e
+#define STORE_BC_TO_HL_REG_REVERSE mov m, b \ dcx h \ mov m, c
 
 ; de = de + guest[hl], hl = hl + 1
 #define ADD_FROM_HL_TO_DE \ mov a, m \ add e \ mov e, a \ inx h \ mov a, m \ adc d \ mov d, a
 
 #define ALIGN_WORD .org ( $ + 01H) & 0FFFEH ; align word
+#define ALIGN_16   .org ( $ + 0FH) & 0FFF0H ; align 16
+
+; Processor Status Word (PSW) bits
+#define PSW_C           1      ; Carry
+#define PSW_V           2      ; Arithmetic overflow
+#define PSW_Z           4      ; Zero result
+#define PSW_N           8      ; Negative result
+#define PSW_T           16     ; Trap/Debug
+#define PSW_P           0200   ; Priority
+#define PSW_HALT        0400   ; Halt
         
         lxi d, $1234
         call assert_de_equals
@@ -50,8 +63,2262 @@
         mvi a, $c9
         sta 5
 
-        jmp test_opcodes
+        ;jmp test_mov_1
+        ;jmp test_opcodes
+
+
+#ifdef TEST_OPCODES
+test_opcodes:
+        lxi h, test_opcode_table
+
+topc_loop:
+        shld r7
+        mov e, m
+        inx h
+        mov d, m
+        inx h
+
+        mov a, e
+        cpi $ff
+        jnz topc_l1
+        mov a, d
+        cpi $ff
+        jz topc_done
+topc_l1:
+        push h
+        push d
+        call vm1_exec
+        pop d
+        pop h
+        jmp topc_loop
+topc_done:
+hlt
+        ; END OF TESTS
+        call putsi \ .db 10, 13, "END OF TESTS", 10, 13, '$'
+        rst 0
+
+#endif
         
+test_mov_1:
+        call vm1_reset
+        lxi h, test_mov1_pgm
+        shld r7
+tm1_loop:
+        call vm1_exec
+        lhld vm1_opcode
+        mov a, h
+        ora l
+        jnz tm1_loop
+        hlt
+
+
+        ;ALIGN_16
+        .org 1000q
+test_mov1_pgm:
+#ifdef TEST_MOV
+        .dw 012700q, 1    ; mov #1, r0
+        .dw 012702q, 2    ; mov #2, r2
+        .dw 010001q       ; mov r0, r1
+        .dw 010200q       ; mov r2, r0
+        .dw 012705q       ; mov #125125, r5
+        .dw 125125q       ;
+        .dw 000305q       ; swab r5
+        ;
+        .dw 012737q       ; mov #125125, @#160 ; (=0x70)
+        .dw 125125q
+        .dw 000160q
+        .dw 000337q       ; swab @#160
+        .dw 000160q
+        .dw 013704q       ; mov @#160, r4
+        .dw 000160q
+
+        ;
+        .dw 012701q       ; mov #160, r1
+        .dw 000160q       ; 
+        .dw 010121q       ; mov r1, (r1)+
+        .dw 010121q       ; mov r1, (r1)+
+        .dw 010121q       ; mov r1, (r1)+
+        .dw 010121q       ; mov r1, (r1)+
+        .dw 014102q       ; mov -(r1), r2
+        .dw 014103q       ; mov -(r1), r3
+        .dw 014104q       ; mov -(r1), r4
+        .dw 014105q       ; mov -(r1), r5
+#endif
+;
+;        ;.dw 014747q       ; mov -(r7), -(r7)
+;
+
+#ifdef TEST_MOVB
+        ; write "pqrs" to 0x70, read back bytes
+        ; exp: 000002 000160 000163 000162 000161 000160 000000 006520
+        .dw 012701q       ; mov #160, r1
+        .dw 000160q       ; 
+        .dw 110121q       ; movb r1, (r1)+
+        .dw 110121q       ; movb r1, (r1)+
+        .dw 110121q       ; movb r1, (r1)+
+        .dw 110121q       ; movb r1, (r1)+
+        .dw 114102q       ; movb -(r1),r2
+        .dw 114103q       ; movb -(r1),r3
+        .dw 114104q       ; movb -(r1),r4
+        .dw 114105q       ; movb -(r1),r5
+#endif
+
+#ifdef TEST_MOVB2
+        .dw 112702q; movb #160, r2
+        .dw 000160q
+        .dw 112722q ; movb #1, (r2)+
+        .dw 000001q ; 
+        .dw 112722q ; movb #2, (r2)+
+        .dw 000002q ;                   ; @000160 = 001001
+        .dw 112742q ; movb #3, -(r2)
+        .dw 000003q ;
+        .dw 112742q ; movb #4, -(r2)
+        .dw 000004q ;
+#endif
+
+#ifdef TEST_JMP
+        ; jmp
+        .dw 000167q       ; jmp feck
+        .dw 000002q
+        .dw 000000q       ; bad halt
+        .dw 010700q       ; mov r7, r0
+        .dw 000120q       ; jmp (r0)+
+        .dw 000120q       ; jmp (r0)+
+        .dw 000120q       ; jmp (r0)+
+        .dw 000120q       ; jmp (r0)+
+#endif
+
+#ifdef TEST_JSR
+        ; jsr
+        .dw 012706q       ;       mov #400, r6
+        .dw 000400q       ;
+        .dw 012705q       ;       mov #123456, r5
+        .dw 123456q
+        .dw 004567q       ;       jsr r5, feck
+        .dw 000002q       ;     
+        .dw 000000q       ;       halt
+        .dw 000205q       ; feck: rts r5
+#endif
+
+#ifdef TEST_FLAGSR
+        .dw 000257q       ; CCC clear all
+        .dw 000261q ;  SEC          
+        .dw 000257q       ; CCC clear all
+        .dw 000262q ;  SEV          
+        .dw 000257q       ; CCC clear all
+        .dw 000263q ;  SEC:SEV      
+        .dw 000257q       ; CCC clear all
+        .dw 000264q ;  SEZ          
+        .dw 000257q       ; CCC clear all
+        .dw 000265q ;  SEC:SEZ      
+        .dw 000257q       ; CCC clear all
+        .dw 000266q ;  SEV:SEZ      
+        .dw 000257q       ; CCC clear all
+        .dw 000267q ;  SEC:SEV:SEZ  
+        .dw 000257q       ; CCC clear all
+        .dw 000270q ;  SEN          
+        .dw 000257q       ; CCC clear all
+        .dw 000271q ;  SEN:SEC      
+        .dw 000257q       ; CCC clear all
+        .dw 000272q ;  SEN:SEV      
+        .dw 000257q       ; CCC clear all
+        .dw 000273q ;  SEN:SEC:SEV  
+        .dw 000257q       ; CCC clear all
+        .dw 000274q ;  SEN:SEZ      
+        .dw 000257q       ; CCC clear all
+        .dw 000275q ;  SEN:SEC:SEZ  
+        .dw 000257q       ; CCC clear all
+        .dw 000276q ;  SEN:SEV:SEZ  
+        .dw 000257q       ; CCC clear all
+
+        .dw 000277q ;  SCC          
+        .dw 000241q ;  CLC         
+        .dw 000277q ;  SCC          
+        .dw 000242q ;  CLV         
+        .dw 000277q ;  SCC          
+        .dw 000243q ;  CLC:CLV     
+        .dw 000277q ;  SCC          
+        .dw 000244q ;  CLZ         
+        .dw 000277q ;  SCC          
+        .dw 000245q ;  CLC:CLZ     
+        .dw 000277q ;  SCC          
+        .dw 000246q ;  CLV:CLZ
+        .dw 000277q ;  SCC          
+        .dw 000247q ;  CLC:CLV:CLZ
+        .dw 000277q ;  SCC          
+        .dw 000250q ;  CLN         
+        .dw 000277q ;  SCC          
+        .dw 000251q ;  CLN:CLC     
+        .dw 000277q ;  SCC          
+        .dw 000252q ;  CLN:CLV     
+        .dw 000277q ;  SCC          
+        .dw 000253q ;  CLN:CLC:CLV 
+        .dw 000277q ;  SCC          
+        .dw 000254q ;  CLN:CLZ     
+        .dw 000277q ;  SCC          
+        .dw 000255q ;  CLN:CLC:CLZ 
+        .dw 000277q ;  SCC          
+        .dw 000256q ;  CLN:CLV:CLZ 
+        .dw 000277q ;  SCC          
+        .dw 000257q ;  CCC         
+#endif
+
+#ifdef TEST_CLR
+        .dw 012701q ; mov #177777, r1
+        .dw 177777q ; 
+        .dw 010100q ; mov r1, r0
+        .dw 005001q ; clr r1
+        .dw 012702q ; mov #160, r2
+        .dw 000160q ; 
+        .dw 010022q ; mov r0, (r2)+
+        .dw 010022q ; mov r0, (r2)+
+        .dw 005042q ; clr -(r2)
+        .dw 005042q ; clr -(r2)
+
+        .dw 112722q ; movb #1, (r2)+
+        .dw 000001q ; 
+        .dw 112722q ; movb #2, (r2)+
+        .dw 000002q ; 
+        .dw 105042q ; clrb -(r2)
+        .dw 105042q ; clrb -(r2)
+#endif
+
+#ifdef TEST_COM
+        .dw 112702q ; movb #160, r2
+        .dw 000160q ; 
+        .dw 005102q ; com r2            r2 -> 177617
+        .dw 012703q ; mov #177777, r3
+        .dw 177777q ; 
+        .dw 105103q ; comb r3           r3 -> 177400
+#endif
+
+#ifdef TEST_INC
+        .dw 005001q ; clr r1
+        .dw 005301q ; dec r1
+        .dw 010103q ; mov r1, r3
+        .dw 005201q ; inc r1
+        .dw 010102q ; mov r1, r2
+        .dw 105302q ; decb r2
+        .dw 105202q ; incb r2
+        .dw 105203q ; incb r3 ; r3->177400
+        .dw 105303q ; decb r3 ; r3->177777
+#endif
+
+#ifdef TEST_NEG
+        .dw 012700q ; mov #1, r0
+        .dw 000001q ; 
+        .dw 005400q ; neg r0    r0->177777
+        .dw 105400q ; negb r0   r0->177401
+#endif
+
+#ifdef TEST_BR
+        ; br
+        .dw 000401q       ; br bob
+        .dw 000401q       ; mike: br dob
+        .dw 000776q       ; bob: br mike
+#endif
+
+#ifdef TEST_BRCOND
+        .dw 000401q ;        br t0
+        .dw 000000q ;  bob:  halt
+        .dw 000257q ;  t0:   ccc ; bne: br if Z=0
+        .dw 000244q ;        clz
+        .dw 001001q ;        bne t1
+        .dw 000773q ;        br bob
+        .dw 000257q ;  t1:   ccc ; beq: br if Z=1
+        .dw 000264q ;        sez
+        .dw 001401q ;        beq t2
+        .dw 000767q ;        br bob
+        .dw 000257q ;  t2:   ccc; bpl: br if N=0
+        .dw 100001q ;        bpl t3
+        .dw 000764q ;        br bob
+        .dw 000257q ;  t3:   ccc; bmi: br if N=1
+        .dw 000270q ;        sen
+        .dw 100401q ;        bmi t4
+        .dw 000760q ;        br bob
+        .dw 000257q ;  t4:   ccc; bvc: br if V=0
+        .dw 102001q ;        bvc t5
+        .dw 000755q ;        br bob
+        .dw 000257q ;  t5:   ccc; bvs: br if V=1
+        .dw 000262q ;        sev
+        .dw 102401q ;        bvs t6
+        .dw 000751q ;        br bob
+        .dw 000257q ;  t6:   ccc; bhis/bcc: br if C=0
+        .dw 103000q ;        bhis t7
+        .dw 000257q ;  t7:   ccc; blo/bcs: br if C=1
+        .dw 000261q ;        sec
+        .dw 103400q ;        blo t8
+        .dw 000257q ;  t8:   ccc; bge: br if N ^ V = 0
+        .dw 002001q ;        bge t8a
+        .dw 000741q ;        br bob
+        .dw 000262q ;  t8a:  sev
+        .dw 000270q ;        sen
+        .dw 002001q ;        bge t9
+        .dw 000735q ;        br bob
+        .dw 000257q ;  t9:   ccc; blt: br if N ^ V = 1
+        .dw 000270q ;        sen
+        .dw 002401q ;        blt t9a
+        .dw 000731q ;        br bob
+        .dw 000257q ;  t9a:  ccc
+        .dw 000262q ;        sev
+        .dw 002401q ;        blt t10
+        .dw 000725q ;        br bob
+        .dw 000257q ;  t10:  ccc; ble: br if Z | (N ^ V) = 1
+        .dw 000264q ;        sez
+        .dw 003401q ;        ble t10a
+        .dw 000721q ;        br bob
+        .dw 000257q ;  t10a: ccc
+        .dw 000270q ;        sen
+        .dw 003401q ;        ble t10b
+        .dw 000715q ;        br bob
+        .dw 000262q ;  t10b: sev
+        .dw 003713q ;        ble bob ; will be wrong
+        .dw 000250q ;        cln
+        .dw 003401q ;        ble t11
+        .dw 000710q ;        br bob
+        .dw 000257q ;  t11:  ccc; bhi: C | Z = 0
+        .dw 000261q ;        sec
+        .dw 101305q ;        bhi bob
+        .dw 000257q ;        ccc
+        .dw 000264q ;        sez
+        .dw 101302q ;        bhi bob
+        .dw 000257q ;        ccc
+        .dw 000277q ;        scc
+        .dw 000241q ;        clc
+        .dw 000244q ;        clz
+        .dw 101001q ;        bhi t12
+        .dw 000674q ;        br bob
+        .dw 000257q ;  t12:  ccc; blos: C | Z = 1
+        .dw 101672q ;        blos bob
+        .dw 000261q ;        sec
+        .dw 101401q ;        blos t12a
+        .dw 000667q ;        br bob
+        .dw 000257q ;  t12a: ccc
+        .dw 000264q ;        sez
+        .dw 101401q ;        blos t13a
+        .dw 000663q ;        br bob
+        .dw 000400q ;  t13a: br good
+        .dw 000000q ;  good: halt        ; PC=240
+
+#endif
+
+#ifdef TEST_SOB
+        .dw 012700q ;        mov #2, r0
+        .dw 000002q
+        .dw 077001q ; lup:   sob r0, lup
+#endif
+
+        ; missing tests
+        ; br, bne, beq, bpl, bmi, bvc, bvs, bhis, 
+        ; bcc, blo, bcs, bge, blt, ble, bhi, blos
+
+        .dw 000000q       ; halt
+        .dw 177777q       ; TERMINAT *
+
+
+; test opcodes
+        ALIGN_WORD 
+test_opcode_table:
+        .dw 000000q ; HALT          
+        .dw 000001q ; WAIT          
+        .dw 000002q ; RTI           
+        .dw 000003q ; BPT           
+        .dw 000004q ; IOT           
+        .dw 000005q ; RESET         
+        .dw 000006q ; RTT           
+        .dw 000100q ; JMP 0177700        
+        .dw 000200q ; RTS 0177770
+        ;.xw 000230q ; SPL           - not on vm1
+        .dw 000240q ; CCOND 0177760     ; nop is "clear nothing", also see "snop" 
+        ;.xw 000241q ; CCOND 0177760
+        ;.xw 000242q ; CCOND 0177760
+        ;.xw 000243q ; CCOND 0177760
+        ;.xw 000244q ; CCOND 0177760
+        ;.xw 000245q ; CCOND 0177760
+        ;.xw 000246q ; CCOND 0177760
+        ;.xw 000247q ; CCOND 0177760
+        ;.xw 000250q ; CCOND 0177760
+        ;.xw 000251q ; CCOND 0177760
+        ;.xw 000252q ; CCOND 0177760
+        ;.xw 000253q ; CCOND 0177760
+        ;.xw 000254q ; CCOND 0177760
+        ;.xw 000255q ; CCOND 0177760
+        ;.xw 000256q ; CCOND 0177760
+        ;.xw 000257q ; CCOND 0177760
+        .dw 000260q ; SCOND 0177760
+        ;.xw 000261q ; SCOND 0177760
+        ;.xw 000262q ; SCOND 0177760
+        ;.xw 000263q ; SCOND 0177760
+        ;.xw 000264q ; SCOND 0177760
+        ;.xw 000265q ; SCOND 0177760
+        ;.xw 000266q ; SCOND 0177760
+        ;.xw 000267q ; SCOND 0177760
+        ;.xw 000270q ; SCOND 0177760
+        ;.xw 000271q ; SCOND 0177760
+        ;.xw 000272q ; SCOND 0177760
+        ;.xw 000273q ; SCOND 0177760
+        ;.xw 000274q ; SCOND 0177760
+        ;.xw 000275q ; SCOND 0177760
+        ;.xw 000276q ; SCOND 0177760
+        ;.xw 000277q ; SCOND 0177760
+        .dw 000300q ; SWAB 0177700
+        .dw 000400q ; BR   0177400
+        .dw 001000q ; BNE  0177400
+        .dw 001400q ; BEQ  0177400
+        .dw 002000q ; BGE  0177400
+        .dw 002400q ; BLT  0177400
+        .dw 003000q ; BGT  0177400
+        .dw 003400q ; BLE  0177400
+        .dw 004000q ; JSR  0177000
+        .dw 005000q ; CLR  0177700         
+        .dw 005100q ; COM  0177700
+        .dw 005200q ; INC  0177700        
+        .dw 005300q ; DEC  0177700         
+        .dw 005400q ; NEG  0177700         
+        .dw 005500q ; ADC           
+        .dw 005600q ; SBC           
+        .dw 005700q ; TST           
+        .dw 006000q ; ROR           
+        .dw 006100q ; ROL           
+        .dw 006200q ; ASR           
+        .dw 006300q ; ASL           
+        .dw 006400q ; MARK          
+        .dw 006500q ; MFPI          
+        .dw 006600q ; MTPI          
+        .dw 006700q ; SXT           
+        .dw 010000q ; MOV 0170000
+        .dw 020000q ; CMP           
+        .dw 030000q ; BIT           
+        .dw 040000q ; BIC           
+        .dw 050000q ; BIS           
+        .dw 060000q ; ADD           
+        ;.xw 070000q ; MUL       -- not in vm1
+        ;.xw 071000q ; DIV       -- not in vm1
+        ;.xw 072000q ; ASH       -- not in vm1
+        ;.xw 073000q ; ASHC      -- not in vm1
+        .dw 074000q ; XOR      
+        ;.xw 075000q ; FADD      -- not in vm1
+        ;.xw 075010q ; FSUB      -- not in vm1
+        ;.xw 075020q ; FMUL      -- not in vm1
+        ;.xw 075030q ; FDIV      -- not in vm1
+        .dw 077000q ; SOB  0177000
+        .dw 100000q ; BPL  0177400
+        .dw 100400q ; BMI  0177400   
+        .dw 101000q ; BHI  0177400   
+        .dw 101400q ; BLOS 0177400    
+        .dw 102000q ; BVC  0177400   
+        .dw 102400q ; BVS  0177400   
+        .dw 103000q ; BCC  0177400   
+        .dw 103400q ; BCS  0177400   
+        .dw 104000q ; EMT      
+        .dw 104400q ; TRAP     
+        .dw 105000q ; CLRB 0177700   
+        .dw 105100q ; COMB 0177700    
+        .dw 105200q ; INCB 0177700 
+        .dw 105300q ; DECB 0177700 
+        .dw 105400q ; NEGB 0177700
+        .dw 105500q ; ADCB     
+        .dw 105600q ; SBCB     
+        .dw 105700q ; TSTB     
+        .dw 106000q ; RORB     
+        .dw 106100q ; ROLB     
+        .dw 106200q ; ASRB     
+        .dw 106300q ; ASLB     
+        .dw 106500q ; MFPD     
+        .dw 106600q ; MTPD     
+        .dw 110000q ; MOVB 0170000
+        .dw 120000q ; CMPB     
+        .dw 130000q ; BITB     
+        .dw 140000q ; BICB     
+        .dw 150000q ; BISB     
+        .dw 160000q ; SUB      
+        .dw 177777q ; TERMINAT *
+
+; test rst1
+rst1_handler:
+        lhld vm1_opcode
+        call hl_to_hexstr
+
+        lxi d, hexstr
+        mvi c, 9
+        call 5
+  
+        call putsi \ .db " opcode not implemented", 10, 13, '$'
+        pop h
+        ret
+
+        ; call setreg \ .dw r3 \ .dw $1234
+        ; lxi h, $3412    ; r3 = 1234_big
+        ; shld r3
+setreg: 
+        pop h   ; reg addr
+        mov e, m
+        inx h
+        mov d, m
+        inx h
+
+        mov a, m
+        stax d \ inx d \ inx h
+        mov a, m
+        stax d \ inx h
+        pchl
+
+        ; print inline string literal, e.g. 
+        ; call putsi \ .db "hello$"
+putsi:
+        pop d
+        push d
+        mvi c, 9
+        call 5
+        mvi a, '$'
+        pop h
+putsi_l0:        
+        cmp m
+        inx h
+        jnz putsi_l0
+        pchl
+        
+assert_e_equals:
+        pop h
+        shld assert_adr
+        mov a, m
+        cmp e
+        jnz assert8_trap
+        inx h
+        pchl
+assert8_trap:
+        push psw 
+        push d
+        call putsi \ .db "assert at $"
+        lhld assert_adr
+        dcx h \ dcx h \ dcx h
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        call 5
+        ;
+        call putsi \ .db " e=$"
+        pop h
+        mvi h, 0
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        call 5
+        
+        call putsi \ .db " expected=$"
+        pop psw
+        mvi h, 0
+        mov l, a
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        call 5
+        
+        rst 0
+
+assert_de_equals:
+        pop h
+        shld assert_adr
+        mov a, e
+        cmp m
+        jnz assert_trap
+        inx h
+        mov a, d
+        cmp m
+        jnz assert_trap
+        inx h
+        pchl
+assert_trap:
+        push d
+        lhld assert_adr
+        dcx h \ dcx h \ dcx h
+        call hl_to_hexstr
+        
+        call putsi \ .db "assert at $"
+        lxi d, hexstr
+        mvi c, 9
+        call 5
+        
+        call putsi \ .db " act=$"
+
+        pop h
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        call 5
+        
+        ; expected
+        lhld assert_adr
+        mov e, m
+        inx h
+        mov d, m
+        xchg
+        call hl_to_hexstr
+        call putsi \ .db " exp=$"
+        lxi d, hexstr
+        mvi c, 9
+        call 5
+assert_trap_nl_exit:
+        call putsi \ .db 10, 13, "$"
+        
+        rst 0
+
+assert_reg_equals:
+        pop h
+        shld assert_adr
+        mov e, m \ inx h \ mov d, m \ inx h
+
+        ldax d
+        cmp m
+        inx h
+        inx d
+        jnz assert_reg_trap
+        ldax d \ cmp m \ inx h
+        jnz assert_reg_trap
+        pchl
+assert_reg_trap:
+        lhld assert_adr
+        push h
+        dcx h \ dcx h \ dcx h \ call hl_to_hexstr
+        call putsi \ .db "assert at $"
+        lxi d, hexstr \ mvi c, 9 \ call 5
+
+        pop h
+        mov e, m \ inx h \ mov d, m
+        xchg
+        mov e, m \ inx h \ mov d, m
+        xchg
+        call hl_to_hexstr
+        call putsi \ .db " act=$"
+        lxi d, hexstr \ mvi c, 9 \ call 5
+
+        lhld assert_adr
+        inx h \ inx h
+        mov e, m \ inx h \ mov d, m \ xchg
+        call hl_to_hexstr
+        call putsi \ .db " exp=$"
+        lxi d, hexstr \ mvi c, 9 \ call 5
+
+        jmp assert_trap_nl_exit
+
+        
+hl_to_hexstr:
+        mvi a, $f0
+        ana h
+        rar \ rar \ rar \ rar \ call a_to_hexchar \ sta hexstr + 0
+        mvi a, $0f
+        ana h
+        call a_to_hexchar \ sta hexstr + 1
+        mvi a, $f0
+        ana l
+        rar \ rar \ rar \ rar \ call a_to_hexchar \ sta hexstr + 2
+        mvi a, $0f
+        ana l
+        call a_to_hexchar \ sta hexstr + 3
+        ret
+        
+a_to_hexchar:
+	ori 0F0h
+	daa
+	cpi 60h
+	sbi 1Fh        
+        ret
+        
+assert_adr: .dw 0        
+hexstr:  .db 0, 0, 0, 0, "$"        
+        
+        
+        ; clear $1000..$2fff
+clearmem:
+        lxi h, $1000
+        lxi b, $3000
+clearmem_l0:        
+        mov m, c
+        inx h
+        mov a, h
+        cmp b
+        jnz clearmem_l0
+        ret
+        
+        ;
+        ;
+        ; EMULATOR CORE
+        ;
+        ;
+
+        .org $6000
+
+vm1_reset:
+        lxi h, regfile
+        mvi c, regfile_end - regfile
+        xra a
+vm1_reset_l1:
+        mov m, a \ inx h
+        dcr c
+        jnz vm1_reset_l1
+        ret
+
+        
+
+vm1_exec:
+        lhld r7
+        LOAD_DE_FROM_HL ; de = opcode, hl += 1
+        inx h
+        shld r7         ; r7 += 2
+        mov h, d
+        mov l, e        ; keep opcode in de, copy to hl
+        shld vm1_opcode
+        mov a, h
+        ani $f0         ; sel by upper 4 bits
+        mov l, a
+        mvi h, vm1_opcode1_tbl >> 8
+        pchl
+
+vm1_opcode: .dw 0
+
+        .org ( $ + 0FFH) & 0FF00H ; align 256
+vm1_opcode1_tbl:
+         
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op00:
+
+        ; HALT    000000
+        ; WAIT    000001
+        ; RTI     000002
+        ; BPT     000003
+        ; IOT     000004
+        ; RESET   000005
+        ; RTT     000006
+
+        ; JMP     0001DD  0x0040
+        ; RTS     00020R  0x0080
+
+        ; NOP     000240  0xa0
+        ; CLC, CLV, CLZ, CLN, CCC               00024x, 00025x 0xa1..0xbf
+        ; SEC, SEV, SEZ, SEN, SCC               00026x, 00027x
+        ; 
+        ; BR      000400  0x100
+        ; BNE     001000  0x200
+        ; BEQ     001400  0x3xx
+        ; BGE     002000  0x4xx
+        ; BLT     002400  0x5xx
+        ; BGT     003000  0x6xx
+        ; BLE     003400  0x7xx
+        ; JSR     004RDD  0x800.0x9ff
+        ;
+        ; CLR..TST 0050DD..0057DD 0xa00..0xbff
+        ; ROR..SXT 0060DD..0067DD 0xc00..0xdff
+        ; 
+        ; opcode in de
+        xra a
+        ora d
+        jz vm1op0x00xx ; instructions 000000..000377
+
+        cpi $a
+        jm vm1op0_0x100_0x9ff  ; branches and jsr
+        cpi $e
+        jm vm1op0xa00_0xdff  ; clr..sxt
+        rst 1  ; unknown opcode 
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op01: ; 01ssdd mov ss, dd
+opc_mov:
+        xchg  ; opcode was in de -> hl
+        push h
+        call load_ss16
+        mov b, d
+        mov c, e
+
+        jmp mov_setaluf_and_store
+
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op02:
+        jmp opc_cmp
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op03:
+        jmp opc_bit
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op04:
+        jmp opc_bic
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op05:
+        jmp opc_bis
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op06:
+        jmp opc_add
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op07:
+        mvi a, $fe
+        ana d
+        cpi $78
+        jz opc_xor
+        cpi $7e
+        jz opc_sob
+        rst 1
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op10:
+        ; BPL 
+        ; BMI 
+        ; BHI 
+        ; BLS 
+        ; BVC 
+        ; BVS 
+        ; BCC 
+        ; BCS 
+        ; EMT 
+        ; TRAP
+        ; CLRB
+        ; COMB
+        ; INCB
+        ; DECB
+        ; CLRB
+        ; ADCB
+        ; SBCB
+        ; TSTB
+        ; RORB
+        ; ROLB
+        ; ASRB
+        ; ASLB
+        ; MFPD
+        ; MTPD
+        jmp vm1op10_disp
+
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op11:
+opc_movb:
+        xchg  ; opcode was in de -> hl
+        push h
+        call load_ss8
+        mov b, d
+        mov c, e
+        jmp movb_setaluf_and_store
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op12:
+        jmp opc_cmpb
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op13:
+        jmp opc_bitb
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op14:
+        jmp opc_bicb
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op15:
+        jmp opc_bisb
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op16:
+        jmp opc_sub
+        .org ( $ + 0FH) & 0FFF0H ; align 16
+vm1op17:
+        rst 1
+
+        ;; non-aligned opcode microcode
+
+        ; instructions 000000..000377
+        ; HALT    000000
+        ; WAIT    000001
+        ; RTI     000002
+        ; BPT     000003
+        ; IOT     000004
+        ; RESET   000005
+        ; RTT     000006
+
+        ; JMP     0001DD  0x0040
+        ; RTS     00020R  0x0080
+
+        ; NOP     000240  0xa0
+        ;
+        ; CLC, CLV, CLZ, CLN, CCC               00024x, 00025x 0xa1..0xbf
+        ; SEC, SEV, SEZ, SEN, SCC               00026x, 00027x
+vm1op0x00xx:
+        mov a, e
+        cpi 240q  
+        jz opc_nop
+        ora a \ jz opc_halt
+        dcr a \ jz opc_wait
+        dcr a \ jz opc_rti
+        dcr a \ jz opc_bpt
+        dcr a \ jz opc_iot
+        dcr a \ jz opc_reset
+        dcr a \ jz opc_rtt
+        mvi a, 370q
+        ana e
+        cpi 240q \ jz opc_ccond
+        cpi 250q \ jz opc_ccond
+        cpi 260q \ jz opc_scond
+        cpi 270q \ jz opc_scond
+        cpi 200q \ jz opc_rts
+        mvi a, 300q
+        ana e
+        cpi 100q \ jz opc_jmp
+        cpi 300q \ jz opc_swab
+        rst 1
+
+        ; branches and jsr
+        ; BR      000400  0x100
+        ; BNE     001000  0x200
+        ; BEQ     001400  0x3xx
+        ; BGE     002000  0x4xx
+        ; BLT     002400  0x5xx
+        ; BGT     003000  0x6xx
+        ; BLE     003400  0x7xx
+        ; JSR     004RDD  0x800.0x9ff
+vm1op0_0x100_0x9ff:
+        mvi a, $f
+        ana d   ; 1..7 = br*, 8..15 = jsr
+        dcr a \ jz opc_br
+        dcr a \ jz opc_bne
+        dcr a \ jz opc_beq
+        dcr a \ jz opc_bge
+        dcr a \ jz opc_blt
+        dcr a \ jz opc_bgt
+        dcr a \ jz opc_ble
+        jmp opc_jsr
+        rst 1
+
+        ; CLR..TST 0050DD..0057DD 0xa00..0xbff
+        ; ROR..SXT 0060DD..0067DD 0xc00..0xdff
+        ; CLR: 0A00..0A3F << 2 = 0x28xx  ; & 0x700>>8 = 0
+        ; COM: 0A40..0A7F << 2 = 0x29xx  ; & 0x700>>8 = 1
+        ; INC: 0A80..0ABF << 2 = 0x2axx  ; & 0x700>>8 = 2
+        ; DEC: 0AC0..0AFF << 2 = 0x2bxx  ; & 0x700>>8 = 3
+        ; NEG: 0B00..0B3F << 2 = 0x2cxx  ; & 0x700>>8 = 4
+        ; ADC: 0B40..0B7F << 2 = 0x2dxx  ; & 0x700>>8 = 5
+        ; SBC: 0B80..0BBF << 2 = 0x2exx  ; & 0x700>>8 = 6
+        ; TST: 0BC0..0BFF << 2 = 0x2fxx  ; & 0x700>>8 = 7
+        ;
+        ; ROR: 0C00..0C3F << 2 = 0x30xx  ;
+        ; ROL
+        ; ASR
+        ; ASL
+        ; MARK
+        ; MFPI
+        ; MTPI
+        ; SXT
+vm1op0xa00_0xdff:
+        mov h, d
+        mov l, e
+        dad h
+        dad h
+        mvi a, $f0
+        ana h
+        cpi $30 ; ror << 2 == 0x30xx, etc
+        jz vm1op0xc00_0xdff
+        mvi a, 7
+        ana h \ jz opc_clr
+        dcr a \ jz opc_com
+        dcr a \ jz opc_inc
+        dcr a \ jz opc_dec
+        dcr a \ jz opc_neg
+        dcr a \ jz opc_adc
+        dcr a \ jz opc_sbc
+        dcr a \ jz opc_tst
+        rst 1
+vm1op0xc00_0xdff:
+        mvi a, 7
+        ana h \ jz opc_ror
+        dcr a \ jz opc_rol
+        dcr a \ jz opc_asr
+        dcr a \ jz opc_asl
+        dcr a \ jz opc_mark
+        dcr a \ jz opc_mfpi
+        dcr a \ jz opc_mtpi
+        dcr a \ jz opc_sxt
+        rst 1
+
+vm1op10_disp:
+        mvi a, $e
+        ana d
+        rar ; pick x xxx 110 x_xx xxx xxx  -> 110
+        cpi 4 \ jm vm1op10_bpl_blo
+        cpi 5 \ jm vm1op10_emt_trap
+        cpi 6 \ jm vm1op10_clrb_tstb
+        ;jmp vm1op10_rorb_mtpd
+        ; RORB
+        ; ROLB
+        ; ASRB
+        ; ASLB
+        ; MFPD
+        ; MTPD
+vm1op10_rorb_mtpd:
+        mov h, d
+        mov l, e
+        dad h
+        dad h
+        mov a, h
+        ani 7
+              \ jz opc_rorb
+        cpi 1 \ jz opc_rolb
+        cpi 2 \ jz opc_asrb
+        cpi 3 \ jz opc_aslb
+        cpi 5 \ jz opc_mfpd
+        cpi 6 \ jz opc_mtpd
+        rst 1
+
+
+        ; BPL 
+        ; BMI 
+        ; BHI 
+        ; BLS 
+        ; BVC 
+        ; BVS 
+        ; BCC 
+        ; BCS 
+vm1op10_bpl_blo:
+        mvi a, $f
+        ana d \ jz opc_bpl
+        cpi 1 \ jz opc_bmi
+        cpi 2 \ jz opc_bhi
+        cpi 3 \ jz opc_blos
+        cpi 4 \ jz opc_bvc
+        cpi 5 \ jz opc_bvs
+        cpi 6 \ jz opc_bcc
+        cpi 7 \ jz opc_bcs
+        
+        ; EMT 
+        ; TRAP
+vm1op10_emt_trap:
+        mov h, d
+        mov l, e
+        dad h
+        dad h   ; --> 20..23 = emt, 24..27 = trap
+
+        mov a, h
+        cpi $24
+        jm opc_emt
+        jmp opc_trap
+        
+        ; CLRB
+        ; COMB
+        ; INCB
+        ; DECB
+        ; CLRB
+        ; ADCB
+        ; SBCB
+        ; TSTB
+vm1op10_clrb_tstb:
+        mov h, d
+        mov l, e
+        dad h
+        dad h
+        mov a, h
+        ani 7 \ jz opc_clrb
+        dcr a \ jz opc_comb
+        dcr a \ jz opc_incb
+        dcr a \ jz opc_decb
+        dcr a \ jz opc_negb
+        dcr a \ jz opc_adcb
+        dcr a \ jz opc_sbcb
+        dcr a \ jz opc_tstb
+        rst 1
+
+        ; hl = opcode (xxssdd)
+        ; destroy everything, data in de = SS
+load_ss16:
+        dad h
+        dad h
+        mov l, h
+        ; hl = opcode (xxssdd)
+        ; destroy everything, data in de = DD
+        ;                     dcx h to get data/reg addr
+load_dd16:        
+        ; select addr mode
+        mvi a, 070q
+        ana l
+        ral \ ral ; addr mode * 32
+        mov e, a  ; e = lsb load16[addr mode]
+        mvi a, 007q
+        ana l
+        ral
+        mov l, a  ; l = lsb reg16
+        
+        xchg
+        mvi h, load16 >> 8
+        mvi d, regfile >> 8
+        pchl
+
+        ; same as 16-bit except based on load8
+load_ss8:
+        dad h
+        dad h
+        mov l, h
+load_dd8:
+        mvi a, 070q
+        ana l
+        ral \ ral ; addr mode * 32
+        mov e, a  ; e = lsb load16[addr mode]
+        mvi a, 007q
+        ana l
+        ral
+        mov l, a  ; l = lsb reg16
+        
+        xchg
+        mvi h, load8 >> 8
+        mvi d, regfile >> 8
+        pchl
+
+        ; value in BC -> dst
+        ; 6-bit dst spec in L (3-bit mode | 3-bit reg)
+store_dd16:
+        mvi a, 070q
+        ana l \ ral \ ral \ mov e, a ; e = lsb store16[addr mode]
+        mvi a, 007q
+        ana l \ ral \ mov l, a ; l = lsb &reg16[regnum]
+        xchg
+        mvi h, store16 >> 8
+        mvi d, regfile >> 8
+        push h  ; jump addr on stack
+        xchg
+        LOAD_DE_FROM_HL_REG
+        dcx h
+        ret ; -> stwmode0..7: de = reg16[dst], hl = &reg16[dst], bc = value
+
+        ; value in C -> dst
+        ; 6-bit dst spec in L (3-bit mode | 3-bit reg)
+store_dd8:
+        mvi a, 070q
+        ana l \ ral \ ral \ mov e, a ; e = lsb store8[addr mode]
+        mvi a, 007q
+        ana l \ ral \ mov l, a ; l = lsb &reg16[regnum]
+        xchg
+        mvi h, store8 >> 8
+        mvi d, regfile >> 8
+        push h ; jump addr on stack
+        xchg
+        LOAD_DE_FROM_HL_REG
+        dcx h
+        ret ; -> stwmode0..7: de = reg16[dst], hl = &reg16[dst], bc = value
+        
+        
+        .org ( $ + 0FFH) & 0FF00H ; align 256
+regfile:        
+r0:     .dw 0
+r1:     .dw 0
+r2:     .dw 0
+r3:     .dw 0
+r4:     .dw 0
+r5:     .dw 0
+r6:     .dw 0
+r7:     .dw 0
+rpsw:   .dw 0
+regfile_end .equ $
+
+        ; load operand16 in de
+        ; 
+        .org ( $ + 0FFH) & 0FF00H ; align 256
+load16:
+        ; R
+ldwmode0:
+        xchg
+        LOAD_DE_FROM_HL_REG
+        ret
+        
+        .org load16 + 32
+        ; (R)
+ldwmode1:  
+        xchg
+        LOAD_DE_FROM_HL_REG
+        xchg
+        LOAD_DE_FROM_HL       ; de = (reg)
+        ret
+        
+        .org load16 + (32*2)
+        ; (R)+
+ldwmode2:
+        xchg
+        LOAD_DE_FROM_HL_REG        ; de = reg
+        
+        ; R += 2
+        inx d \ inx d
+
+        STORE_DE_TO_HL_REG_REVERSE
+        
+        ; restore d
+        dcx d
+        dcx d
+        
+        xchg
+        LOAD_DE_FROM_HL
+        ret
+        
+        .org load16 + (32*3)
+        ; @(R)+
+ldwmode3:
+        xchg
+        LOAD_DE_FROM_HL_REG
+        
+        ; R += 2
+        inx d
+        inx d
+        STORE_DE_TO_HL_REG_REVERSE
+        
+        ; restore d
+        dcx d
+        dcx d
+        
+        xchg                  ; hl = reg
+        LOAD_DE_FROM_HL       ; de = [hl]
+        
+        xchg
+        LOAD_DE_FROM_HL
+        ret
+        
+        .org load16 + (32*4)
+        ; -(R)
+ldwmode4:  
+        xchg
+        LOAD_DE_FROM_HL_REG
+        
+        ; R -= 2
+        dcx d
+        dcx d
+        STORE_DE_TO_HL_REG_REVERSE
+        
+        xchg                  ; hl = reg
+        LOAD_DE_FROM_HL
+        ret
+        
+        .org load16 + (32*5)
+        ; @-(R)
+ldwmode5:  
+        xchg
+        LOAD_DE_FROM_HL_REG
+        dcx d
+        dcx d                 ; de -= 2
+        STORE_DE_TO_HL_REG_REVERSE
+        xchg                  ; hl = reg
+        LOAD_DE_FROM_HL
+        xchg
+        LOAD_DE_FROM_HL
+        ret
+        
+        .org load16 + (32*6)
+        ; X(R) - result = [R + im16], im16 = [R7]
+        ;
+        ; normal 110
+        ;   X = [[R7]], R7 += 2, EA = X + reg
+        ;
+        ; jmp n
+        ;   X = [[R7]], R7 += 2, EA = X + [R7]
+        ; de = &reg
+ldwmode6:
+        push d   ; reg addr
+          lhld r7
+          LOAD_DE_FROM_HL     ; de = (r7), im16
+          inx h 
+          shld r7             ; r7 += 2
+        
+        pop h
+        LOAD_BC_FROM_HL_REG   ; bc = reg
+
+        xchg                ; hl = im16
+        dad b               ; hl = R + im16
+
+        LOAD_DE_FROM_HL     ; de = [hl], addr = hl - 1
+        ret
+
+        .org load16 + (32*7)
+        ; @X(R)
+ldwmode7:
+        call ldwmode6
+        ; de = adrs
+        xchg
+        LOAD_DE_FROM_HL
+        ret
+
+        ;
+        ; ------ byte load modes -------
+        ;
+        ; load operand8 in e
+        .org ( $ + 0FFH) & 0FF00H ; align 256
+load8:
+        ; R
+ldbmode0:
+        xchg
+        mov e, m              ; de = reg
+        ret
+        
+        .org load8 + 32
+        ; (R)
+ldbmode1:  
+        xchg
+        LOAD_DE_FROM_HL_REG
+        xchg
+        LOAD_E_FROM_HL
+        ret
+        
+        .org load8 + (32*2)
+        ; (R)+
+ldbmode2:
+        xchg
+        LOAD_DE_FROM_HL_REG ; load register
+
+        ldax d  ; a = (R)
+        mov b, a
+        
+        ; R += 1, but R6 and R7 += 2
+        inx d
+        ; r6, r7 the increment is always 2
+          mvi a, r5 & 255
+          cmp l   ; &r5 - l
+          jp $+4
+          inx d
+          ; ---- 
+        STORE_DE_TO_HL_REG_REVERSE
+        
+        mov e, b
+        ret
+        
+        .org load8 + (32*3)
+        ; @(R)+
+ldbmode3:
+        xchg
+        LOAD_DE_FROM_HL_REG
+        ; R += 2
+        inx d
+        inx d
+        STORE_DE_TO_HL_REG_REVERSE
+        
+        ; restore d
+        dcx d
+        dcx d
+        
+        xchg                    ; hl = reg
+        LOAD_DE_FROM_HL
+        
+        xchg
+        LOAD_E_FROM_HL
+        ret
+        
+        .org load8 + (32*4)
+        ; -(R)
+ldbmode4:  
+        xchg
+        LOAD_DE_FROM_HL_REG
+        ; R -= 1
+        dcx d
+        ; r6, r7 the decrement is always 2
+          mvi a, r5 & 255
+          cmp l   ; &r5 - l
+          jp $+4
+          dcx d
+          ; --- 
+        STORE_DE_TO_HL_REG_REVERSE
+        xchg                    ; hl = reg
+        ;mov e, m
+        LOAD_E_FROM_HL
+        ret
+        
+        .org load8 + (32*5)
+        ; @-(R)
+ldbmode5:  
+        xchg
+        LOAD_DE_FROM_HL_REG
+        dcx d
+        dcx d
+        STORE_DE_TO_HL_REG_REVERSE
+        xchg                    ; hl = reg
+        LOAD_DE_FROM_HL
+        xchg
+        LOAD_E_FROM_HL
+        ret
+        
+        .org load8 + (32*6)
+        ; X(R) - result = [R + im16], im16 = [R7]
+ldbmode6:
+        ;xchg
+        ;LOAD_BC_FROM_HL_REG
+        push d
+          lhld r7
+          LOAD_DE_FROM_HL         ; hidden inx h
+          inx h                   ; = pc + 2
+          shld r7
+        pop h
+        LOAD_BC_FROM_HL_REG
+        xchg 
+        dad b                   ; hl = R + im16
+        LOAD_E_FROM_HL
+        ret
+
+        .org load8 + (32*7)
+        ; @X(R)
+ldbmode7:
+        call ldwmode6
+        ; de = adrs
+        xchg
+        LOAD_E_FROM_HL
+        ret
+        
+        ; DE = &reg16[dstreg]
+        ; BC = value
+        .org ( $ + 0FFH) & 0FF00H ; align 256
+store16:
+stwmode0: ; reg16[dst] = BC
+        STORE_BC_TO_HL_REG
+        ret
+        .org store16 + (32*1)
+stwmode1: ; *reg16[dst] = BC
+        xchg
+        STORE_BC_TO_HL_REG
+        ret
+
+        .org store16 + (32*2)
+stwmode2: ; *reg16[dst] = BC, reg16[dst] += 2
+        xchg                  ; hl = reg16[dst]
+        STORE_BC_TO_HL
+        inx h
+        xchg                  ; hl = &reg16[dst], de = reg16[dst] + 2
+        STORE_DE_TO_HL_REG
+        ret
+
+        .org store16 + (32*3)
+stwmode3: ; **reg16[dst] = BC, reg16[dst] += 2
+        inx d \ inx d         ; de = reg16[dst] + 2
+        STORE_DE_TO_HL_REG    ; reg16[dst] = reg16[dst] + 2
+        dcx d \ dcx d \ xchg  ; hl = old reg16[dst]
+        LOAD_DE_FROM_HL
+        xchg                  ; hl = *reg16[dst]
+        STORE_BC_TO_HL
+        ret
+
+        .org store16 + (32*4)
+stwmode4:
+        ; reg16[dst] -= 2, *reg16[dst] = BC
+        dcx d \ dcx d         ; de = reg16[dst] - 2
+        STORE_DE_TO_HL_REG    ; reg16[dst] -= 2
+        xchg
+        STORE_BC_TO_HL
+        ret
+
+        .org store16 + (32*5)
+stwmode5:
+        ; reg16[dst] -= 2, **reg16[dst] = BC
+        dcx d \ dcx d         ; de -= 2
+        STORE_DE_TO_HL_REG    ; reg16[dst] -= 2
+        xchg                  ; hl = reg16[dst] (addr of addr)
+        LOAD_DE_FROM_HL
+        xchg                  ; hl = *reg16[dst] (addr)
+        STORE_BC_TO_HL        ; **reg16[dst] = bc
+        ret
+
+        .org store16 + (32*6)
+stwmode6:
+        ; *(reg16[dst] + *r7) = BC
+        lhld r7
+        ADD_FROM_HL_TO_DE
+        xchg                  ; de = r7 + 1
+        STORE_BC_TO_HL
+        inx d                 ; r7 += 2
+        xchg
+        shld r7
+        ret
+
+        .org store16 + (32*7)
+stwmode7:
+        ;; **(reg16[dst] + *r7) = BC
+        lhld r7
+        ADD_FROM_HL_TO_DE     ; hl += 1
+        inx h                 ; = r7 + 2
+        shld r7
+        xchg
+        LOAD_DE_FROM_HL
+        xchg
+        STORE_BC_TO_HL
+        ret
+
+
+        .org ( $ + 0FFH) & 0FF00H ; align 256
+store8:
+stbmode0: ; reg16[dst].lsb = C
+        STORE_C_TO_HL_REG
+        ret
+        .org store8 + (32*1)
+stbmode1: ; *reg16[dst] = BC
+        xchg
+        mov m, c
+        ret
+
+        .org store8 + (32*2)
+stbmode2: ; *reg16[dst] = C, reg16[dst] += 1
+        xchg                  ; hl = reg16[dst], de = &reg16[dst]
+        STORE_C_TO_HL
+        xchg
+        inx d
+        STORE_DE_TO_HL_REG
+        ret
+
+        .org store8 + (32*3)
+stbmode3: ; **reg16[dst] = C, reg16[dst] += 2
+        inx d \ inx d
+        STORE_DE_TO_HL_REG    ; reg16[dst] = reg16[dst] + 2
+        dcx d \ dcx d \ xchg  ; hl = old reg16[dst]
+        LOAD_DE_FROM_HL
+        xchg                  ; hl = *reg16[dst]
+        STORE_C_TO_HL         ; **reg16[dst] = C
+        ret
+
+        .org store8 + (32*4)
+stbmode4:
+        ; reg16[dst] -= 1, *reg16[dst] = BC
+        dcx d                 ; de = reg16[dst] - 1
+        STORE_DE_TO_HL_REG    ; reg16[dst] -= 1
+        xchg
+        STORE_C_TO_HL
+        ret
+
+        .org store8 + (32*5)
+stbmode5:
+        ; reg16[dst] -= 2, **reg16[dst] = BC
+        dcx d \ dcx d         ; de -= 2
+        STORE_DE_TO_HL_REG    ; reg16[dst] -= 2
+        xchg                  ; hl = reg16[dst] (addr of addr)
+        LOAD_DE_FROM_HL
+        xchg                  ; hl = *reg16[dst] (addr)
+        STORE_C_TO_HL         ; **reg16[dst] = bc
+        ret
+
+        .org store8 + (32*6)
+stbmode6:
+        ; *(reg16[dst] + *r7) = BC
+        lhld r7
+        ADD_FROM_HL_TO_DE
+        xchg                  ; de = r7 + 1
+        STORE_C_TO_HL
+        inx d                 ; r7 += 2
+        xchg
+        shld r7
+        ret
+
+        .org store8 + (32*7)
+stbmode7:
+        lhld r7
+        ADD_FROM_HL_TO_DE
+        inx h                 ; = r7 + 2
+        shld r7
+        xchg
+        LOAD_DE_FROM_HL
+        xchg
+        STORE_C_TO_HL
+        ret
+
+        ;
+        ; OPCODE IMPLEMENTATION
+        ;
+opc_nop:  
+        ret
+
+        ; cln..ccc  250..257
+opc_ccond: 
+        lxi h, rpsw
+        mvi a, 15
+        ana e       ; 4 lsb of opcode == flags to clear
+        cma
+        ana m
+        mov m, a
+        ret
+
+        ; sen..scc  260..277
+opc_scond:
+        lxi h, rpsw
+        mvi a, 15   ; 4 lsb of opcode == flags to set
+        ana e
+        ora m
+        mov m, a
+        ret
+
+opc_swab: 
+        xchg
+        call load_dd16   ; load DD -> de
+        dcx h            ; hl -> op
+        mov c, d
+        mov b, e
+        STORE_BC_TO_HL
+
+        ; aluf NZ, V=0, C = 0
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+
+        xra a
+        ora c
+        mvi a, PSW_Z
+        jnz $+4
+        xra a
+        ora m
+        mov m, a
+
+        xra a
+        ora b
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+
+        ret
+        
+opc_halt: 
+        rst 1
+opc_wait: 
+        rst 1
+opc_rti:  
+        rst 1
+opc_bpt:  
+        rst 1
+opc_iot:  
+        rst 1
+opc_reset:  
+        rst 1
+opc_rtt:  
+        rst 1
+opc_rts:  
+        ; de = opcode 00020R
+        ; r7 = R
+        mvi a, 7
+        ana e
+        add a
+        mov l, a
+        mvi h, regfile >> 8
+        LOAD_DE_FROM_HL_REG
+        xchg      ; de = &reg + 1, hl = reg
+        shld r7   ; r7 = reg
+        
+        ; R = [r6]
+        lhld r6
+        LOAD_BC_FROM_HL ; bc = [r6]
+        inx h
+        shld r6   ; r6 += 2
+        xchg
+        STORE_BC_TO_HL_REG_REVERSE  ; R = bc
+        ret
+
+opc_br:   
+        nop
+opc_br_int:
+        mvi d, 0
+        mov a, e
+        add a       ; c (extend)
+        mov e, a
+        jnc $+5
+        mvi d, -1
+        lhld r7
+        dad d
+        shld r7
+        ret
+
+opc_bne:
+        ; Z = 0
+        lda rpsw
+        ani PSW_Z
+        jz opc_br_int
+        ret
+opc_beq:
+        ; Z = 1
+        lda rpsw
+        ani PSW_Z
+        jnz opc_br_int
+        ret
+opc_bge:
+        ; N ^ V = 0 
+        lda rpsw
+        ani PSW_N + PSW_V    ; pe -> ge
+        jpe opc_br_int
+        ret
+opc_blt:
+        ; N ^ V = 1
+        lda rpsw
+        ani PSW_N + PSW_V
+        jpo opc_br_int
+        ret
+opc_bgt:
+        ; Z | (N ^ V) = 0  
+        lxi h, rpsw
+        mvi a,  PSW_N + PSW_V
+        ana m
+        rpo   ; N ^ V = 1 -> no
+        mvi a, PSW_Z
+        ana m
+        rnz
+        jmp opc_br_int
+opc_ble:    ; Z | (N ^ V) = 1
+        lxi h, rpsw
+        mvi a, PSW_N + PSW_V
+        ana m
+        jpo opc_br_int  ; N ^ V = 1 -> yes
+        mvi a, PSW_Z
+        jz opc_br_int
+        ret
+opc_bpl:
+        lda rpsw
+        ani PSW_N
+        jz opc_br_int
+        ret
+opc_bmi:
+        lda rpsw
+        ani PSW_N
+        jnz opc_br_int
+        ret
+opc_bhi:
+        ; higher than, C | Z = 0
+        lda rpsw
+        ani PSW_C | PSW_Z
+        jz opc_br_int
+        ret
+opc_blos:
+        ; lower than or same as, C | Z = 1
+        lda rpsw
+        ani PSW_C | PSW_Z
+        jnz opc_br_int
+        ret
+opc_bvc:
+        ; overflow clear
+        lda rpsw
+        ani PSW_V
+        jz opc_br_int
+        ret
+opc_bvs:
+        ; overflow set
+        lda rpsw
+        ani PSW_V
+        jnz opc_br_int
+        ret
+opc_bcc:
+        ; C = 0
+        lda rpsw
+        ani PSW_C
+        jz opc_br_int
+        ret
+opc_bcs:
+        ; C = 1
+        lda rpsw
+        ani PSW_C
+        jnz opc_br_int
+        ret
+
+opc_jmp:  
+        xchg
+        call load_dd16  
+        dcx h             ; ignore the operand, use its addr as new pc value
+        shld r7
+        ret
+
+opc_jsr:   
+        ; de = opcode: 004RDD 
+        ; DD like in jump
+        ;   temp <- EA
+        ;   R6 -= 2
+        ;   (R6) = R
+        ;   R = R7
+        ;   R7 = temp
+        
+        xchg
+        push h
+          call load_dd16
+          dcx h ; h = new address
+          xchg  ; de = EA
+        pop h ; hl = opcode
+        push d ; save EA
+          dad h
+          dad h
+          mvi a, 7
+          ana h
+          ral
+          mov l, a
+          mvi h, regfile >> 8
+          LOAD_BC_FROM_HL_REG  ; bc = R
+          dcx h
+          xchg ; save reg addr in d
+
+          lhld r6 \ dcx h \ dcx h \ shld r6     ; R6 -= 2
+          STORE_BC_TO_HL                        ; (R6) = R
+          
+          lhld r7
+          xchg ; hl = reg addr, de = r7
+          STORE_DE_TO_HL_REG                    ; R = R7
+        pop h
+        shld r7
+        ret
+
+opc_clr:   
+        xchg
+        call load_dd16
+        dcx h
+        lxi b, 0
+        STORE_BC_TO_HL
+clr_aluf_and_ret:
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        ori PSW_Z
+        mov m, a
+        ret
+
+opc_com:   
+        xchg
+        call load_dd16
+        dcx h
+        mov a, d
+        cma
+        mov b, a
+        mov a, e
+        cma
+        mov c, a
+        STORE_BC_TO_HL
+
+        ; aluf NZ, V=0, C=1
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        ori PSW_C
+        mov m, a
+
+        mov a, b
+        ora c
+        jnz com_nosetz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+com_nosetz:
+        mov a, b
+        add a
+        jnz com_nosetn
+        mvi a, PSW_N
+        ora m
+        mov m, a
+com_nosetn:
+
+        ret
+
+opc_inc:   
+        xchg
+        call load_dd16
+        dcx h
+        inx d
+        STORE_DE_TO_HL
+
+        ; aluf NZV
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V)
+        ana m
+        mov m, a
+        mov a, b
+        ora c
+        mvi a, PSW_Z
+        jnz $+4
+        xra a
+        ora m
+        mov m, a
+
+        xra a
+        ora b
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+
+        ; V flag dst == 0100000
+        mov a, c
+        ora a
+        rnz
+        mvi a, $80
+        cmp b
+        rnz
+        mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+
+opc_dec:   
+        xchg
+        call load_dd16
+        dcx h
+        dcx d
+        STORE_DE_TO_HL
+        ; aluf NZV
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V)
+        ana m
+        mov m, a
+        mov a, b
+        ora c
+        mvi a, PSW_Z
+        jnz $+4
+        xra a
+        ora m
+        mov m, a
+
+        mov a, b
+        add a
+        mvi a, PSW_N
+        jnc $+4
+        xra a
+        ora m
+        mov m, a
+
+        ; V flag dst == 0100000
+        inr c
+        rnz
+        mvi a, $7f
+        cmp b
+        rnz
+        mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+
+opc_neg:   
+        xchg
+        call load_dd16
+        dcx h
+
+        mov a, d
+        cma
+        mov d, a
+        mov a, e
+        cma
+        mov e, a
+
+        inx d
+        STORE_DE_TO_HL
+
+        ; aluf NZ, V = 0x8000, C = !Z
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+
+        xra a
+        ora c
+        mvi a, PSW_Z
+        jnz $+5
+        mvi a, PSW_C
+        ora m
+        mov m, a
+
+        xra a
+        ora b
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+
+        ; V flag dst == 0100000
+        mov a, c
+        ora a
+        rnz
+        mvi a, $80
+        cmp b
+        rnz
+        mvi a, PSW_V
+        ora m
+        mov m, a
+
+        ret
+
+opc_adc:   
+        rst 1
+opc_sbc:   
+        rst 1
+opc_tst:   
+        rst 1
+
+opc_ror:   
+        rst 1
+opc_rol:   
+        rst 1
+opc_asr:   
+        rst 1
+opc_asl:   
+        rst 1
+opc_mark:   
+        rst 1
+opc_mfpi:   
+        rst 1
+opc_mtpi:   
+        rst 1
+opc_sxt:   
+        rst 1
+
+opc_cmp:
+        rst 1
+opc_bit:
+        rst 1
+opc_bic:
+        rst 1
+opc_bis:
+        rst 1
+opc_add:
+        rst 1
+opc_xor:
+        rst 1
+opc_sob:
+        ; 077Rnn opcode in de, luckily no flags affected
+        mov h, d
+        mov l, e
+        dad h
+        dad h
+        mvi a, 7          ; a = R
+        ana h             
+        ral
+        mov l, a          ; l = 2*R
+        mvi h, regfile >> 8 
+        LOAD_BC_FROM_HL_REG
+        dcx b
+        STORE_BC_TO_HL_REG_REVERSE
+
+        mov a, b
+        ora c
+        rz
+        
+        ; offset = -2 * nn
+        mvi a, $3f
+        ana e
+        add a ; a = 2*nn (7 bit)
+        cma
+        inr a
+        mov e, a
+        mvi d, -1
+        lhld r7
+        dad d
+        shld r7
+        ret
+
+opc_emt:
+        rst 1
+opc_trap:
+        rst 1
+opc_clrb:
+        xchg
+        call load_dd8
+        mvi c, 0
+        STORE_C_TO_HL
+        jmp clr_aluf_and_ret
+opc_comb:
+        xchg
+        call load_dd8
+        mov a, e
+        cma
+        STORE_A_TO_HL
+        ; aluf NZ, V=0, C=1
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        ori PSW_C
+        mov m, a
+
+        mov a, e
+        ora a
+        jnz comb_nosetz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+comb_nosetz:
+        mov a, e
+        add a
+        jnz comb_nosetn
+        mvi a, PSW_N
+        ora m
+        mov m, a
+comb_nosetn:
+        ret
+
+opc_incb:
+        xchg
+        call load_dd8
+        inr e
+        STORE_C_TO_HL
+
+        ; aluf NZV
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V)
+        ana m
+        mov m, a
+
+        xra a 
+        ora e
+        mvi a, PSW_Z
+        jnz $+4
+        xra a
+        ora m
+        mov m, a
+
+        xra a
+        ora e
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+
+        ; V flag dst == $80
+        mvi a, $80
+        cmp e
+        rnz
+        mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+
+
+opc_decb:
+        xchg
+        call load_dd8
+        dcr e
+        STORE_E_TO_HL
+
+        ; aluf NZV
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V)
+        ana m
+        mov m, a
+
+        xra a 
+        ora e
+        mvi a, PSW_Z
+        jnz $+4
+        xra a
+        ora m
+        mov m, a
+
+        xra a
+        ora e
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+
+        ; V flag dst == $80
+        mvi a, $7f
+        cmp e
+        rnz
+        mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+
+opc_negb:
+        xchg
+        call load_dd8
+        mov a, e
+        cma
+        inr a
+        STORE_A_TO_HL
+
+        ; aluf NZVC
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+
+        xra a 
+        ora e
+        mvi a, PSW_Z
+        jnz $+5
+        mvi a, PSW_C
+        ora m
+        mov m, a
+
+        xra a
+        ora e
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+
+        ; V flag dst == $80
+        mvi a, $80
+        cmp e
+        rnz
+        mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+
+opc_adcb:
+        rst 1
+opc_sbcb:
+        rst 1
+opc_tstb:
+        rst 1
+opc_rorb:
+        rst 1
+opc_rolb:
+        rst 1
+opc_asrb:
+        rst 1
+opc_aslb:
+        rst 1
+opc_mfpd:
+        rst 1
+opc_mtpd:
+        rst 1
+opc_cmpb:
+        rst 1
+opc_bitb:
+        rst 1
+opc_bicb:
+        rst 1
+opc_bisb:
+        rst 1
+opc_sub:
+        rst 1
+
+mov_setaluf_and_store:
+        ; aluf N, Z, V = 0
+        lxi h, rpsw
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        mov m, a
+
+        mov a, b
+        ora c
+        jnz opcmov_nosetz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+opcmov_nosetz:
+        mov a, b
+        add a
+        jnc opcmov_nosetn
+        mvi a, PSW_N
+        ora m
+        mov m, a
+opcmov_nosetn:
+
+        pop h
+        jmp store_dd16
+
+movb_setaluf_and_store:
+        ; aluf N, Z, V = 0
+        lxi h, rpsw
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        mov m, a
+
+        mov a, c
+        ora a
+        jnz opcmovb_nosetz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+opcmovb_nosetz:
+        mov a, c
+        add a
+        jnc opcmovb_nosetn
+        mvi a, PSW_N
+        ora m
+        mov m, a
+opcmovb_nosetn:
+
+        pop h
+        call store_dd8
+        ret
+
+
+#ifdef TEST_ADDRMODES
         ; MODE 0 WORD LOAD: DE=R3
 test_loadw_0:        
         call putsi \ .db 10, 13, "MODE 0 WORD LOAD: DE=R3 $"
@@ -640,1342 +2907,13 @@ test_storeb_7:
         ; 
 
 
-test_opcodes:
-        lxi h, test_opcode_table
-
-topc_loop:
-        shld r7
-        mov e, m
-        inx h
-        mov d, m
-        inx h
-
-        mov a, e
-        cpi $ff
-        jnz topc_l1
-        mov a, d
-        cpi $ff
-        jz topc_done
-topc_l1:
-        push h
-        push d
-        call vm1_exec
-        pop d
-        pop h
-        jmp topc_loop
-
-topc_done:
-hlt
+        hlt
         ; END OF TESTS
         call putsi \ .db 10, 13, "END OF TESTS", 10, 13, '$'
         rst 0
 
-; test opcodes
-        ALIGN_WORD 
-test_opcode_table:
-        .dw 000000q ; HALT          
-        .dw 000001q ; WAIT          
-        .dw 000002q ; RTI           
-        .dw 000003q ; BPT           
-        .dw 000004q ; IOT           
-        .dw 000005q ; RESET         
-        .dw 000006q ; RTT           
-        .dw 000100q ; JMP           
-        .dw 000200q ; RTS           
-        ;.xw 000230q ; SPL           - not on vm1
-        .dw 000240q ; NOP           
-        .dw 000241q ; COND
-        .dw 000242q ; COND
-        .dw 000243q ; COND
-        .dw 000244q ; COND
-        .dw 000245q ; COND
-        .dw 000246q ; COND
-        .dw 000247q ; COND
-        .dw 000250q ; COND
-        .dw 000251q ; COND
-        .dw 000252q ; COND
-        .dw 000253q ; COND
-        .dw 000254q ; COND
-        .dw 000255q ; COND
-        .dw 000256q ; COND
-        .dw 000257q ; COND
-        .dw 000260q ; COND
-        .dw 000261q ; COND
-        .dw 000262q ; COND
-        .dw 000263q ; COND
-        .dw 000264q ; COND
-        .dw 000265q ; COND
-        .dw 000266q ; COND
-        .dw 000267q ; COND
-        .dw 000270q ; COND
-        .dw 000271q ; COND
-        .dw 000272q ; COND
-        .dw 000273q ; COND
-        .dw 000274q ; COND
-        .dw 000275q ; COND
-        .dw 000276q ; COND
-        .dw 000277q ; COND
-        .dw 000300q ; SWAB          
-        .dw 000400q ; BR            
-        .dw 001000q ; BNE           
-        .dw 001400q ; BEQ           
-        .dw 002000q ; BGE           
-        .dw 002400q ; BLT           
-        .dw 003000q ; BGT           
-        .dw 003400q ; BLE           
-        .dw 004000q ; JSR           
-        .dw 005000q ; CLR           
-        .dw 005100q ; COM           
-        .dw 005200q ; INC           
-        .dw 005300q ; DEC           
-        .dw 005400q ; NEG           
-        .dw 005500q ; ADC           
-        .dw 005600q ; SBC           
-        .dw 005700q ; TST           
-        .dw 006000q ; ROR           
-        .dw 006100q ; ROL           
-        .dw 006200q ; ASR           
-        .dw 006300q ; ASL           
-        .dw 006400q ; MARK          
-        .dw 006500q ; MFPI          
-        .dw 006600q ; MTPI          
-        .dw 006700q ; SXT           
-        .dw 010000q ; MOV           
-        .dw 020000q ; CMP           
-        .dw 030000q ; BIT           
-        .dw 040000q ; BIC           
-        .dw 050000q ; BIS           
-        .dw 060000q ; ADD           
-        ;.xw 070000q ; MUL       -- not in vm1
-        ;.xw 071000q ; DIV       -- not in vm1
-        ;.xw 072000q ; ASH       -- not in vm1
-        ;.xw 073000q ; ASHC      -- not in vm1
-        .dw 074000q ; XOR      
-        ;.xw 075000q ; FADD      -- not in vm1
-        ;.xw 075010q ; FSUB      -- not in vm1
-        ;.xw 075020q ; FMUL      -- not in vm1
-        ;.xw 075030q ; FDIV      -- not in vm1
-        .dw 077000q ; SOB      
-        .dw 100000q ; BPL      
-        .dw 100400q ; BMI      
-        .dw 101000q ; BHI      
-        .dw 101400q ; BLOS      
-        .dw 102000q ; BVC      
-        .dw 102400q ; BVS      
-        .dw 103000q ; BCC      
-        .dw 103400q ; BCS      
-        .dw 104000q ; EMT      
-        .dw 104400q ; TRAP     
-        .dw 105000q ; CLRB     
-        .dw 105100q ; COMB     
-        .dw 105200q ; INCB     
-        .dw 105300q ; DECB     
-        .dw 105400q ; NEGB
-        .dw 105500q ; ADCB     
-        .dw 105600q ; SBCB     
-        .dw 105700q ; TSTB     
-        .dw 106000q ; RORB     
-        .dw 106100q ; ROLB     
-        .dw 106200q ; ASRB     
-        .dw 106300q ; ASLB     
-        .dw 106500q ; MFPD     
-        .dw 106600q ; MTPD     
-        .dw 110000q ; MOVB     
-        .dw 120000q ; CMPB     
-        .dw 130000q ; BITB     
-        .dw 140000q ; BICB     
-        .dw 150000q ; BISB     
-        .dw 160000q ; SUB      
-        .dw 177777q ; TERMINAT *
 
-; test rst1
-rst1_handler:
-        call putsi \ .db "opcode not implemented", 10, 13, '$'
-        pop h
-        ret
+#endif ; ADDRMODES
 
-        ; call setreg \ .dw r3 \ .dw $1234
-        ; lxi h, $3412    ; r3 = 1234_big
-        ; shld r3
-setreg: 
-        pop h   ; reg addr
-        mov e, m
-        inx h
-        mov d, m
-        inx h
-
-        mov a, m
-        stax d \ inx d \ inx h
-        mov a, m
-        stax d \ inx h
-        pchl
-
-        ; print inline string literal, e.g. 
-        ; call putsi \ .db "hello$"
-putsi:
-        pop d
-        push d
-        mvi c, 9
-        call 5
-        mvi a, '$'
-        pop h
-putsi_l0:        
-        cmp m
-        inx h
-        jnz putsi_l0
-        pchl
-        
-assert_e_equals:
-        pop h
-        shld assert_adr
-        mov a, m
-        cmp e
-        jnz assert8_trap
-        inx h
-        pchl
-assert8_trap:
-        push psw 
-        push d
-        call putsi \ .db "assert at $"
-        lhld assert_adr
-        dcx h \ dcx h \ dcx h
-        call hl_to_hexstr
-        lxi d, hexstr
-        mvi c, 9
-        call 5
-        ;
-        call putsi \ .db " e=$"
-        pop h
-        mvi h, 0
-        call hl_to_hexstr
-        lxi d, hexstr
-        mvi c, 9
-        call 5
-        
-        call putsi \ .db " expected=$"
-        pop psw
-        mvi h, 0
-        mov l, a
-        call hl_to_hexstr
-        lxi d, hexstr
-        mvi c, 9
-        call 5
-        
-        rst 0
-
-assert_de_equals:
-        pop h
-        shld assert_adr
-        mov a, e
-        cmp m
-        jnz assert_trap
-        inx h
-        mov a, d
-        cmp m
-        jnz assert_trap
-        inx h
-        pchl
-assert_trap:
-        push d
-        lhld assert_adr
-        dcx h \ dcx h \ dcx h
-        call hl_to_hexstr
-        
-        call putsi \ .db "assert at $"
-        lxi d, hexstr
-        mvi c, 9
-        call 5
-        
-        call putsi \ .db " act=$"
-
-        pop h
-        call hl_to_hexstr
-        lxi d, hexstr
-        mvi c, 9
-        call 5
-        
-        ; expected
-        lhld assert_adr
-        mov e, m
-        inx h
-        mov d, m
-        xchg
-        call hl_to_hexstr
-        call putsi \ .db " exp=$"
-        lxi d, hexstr
-        mvi c, 9
-        call 5
-assert_trap_nl_exit:
-        call putsi \ .db 10, 13, "$"
-        
-        rst 0
-
-assert_reg_equals:
-        pop h
-        shld assert_adr
-        mov e, m \ inx h \ mov d, m \ inx h
-
-        ldax d
-        cmp m
-        inx h
-        inx d
-        jnz assert_reg_trap
-        ldax d \ cmp m \ inx h
-        jnz assert_reg_trap
-        pchl
-assert_reg_trap:
-        lhld assert_adr
-        push h
-        dcx h \ dcx h \ dcx h \ call hl_to_hexstr
-        call putsi \ .db "assert at $"
-        lxi d, hexstr \ mvi c, 9 \ call 5
-
-        pop h
-        mov e, m \ inx h \ mov d, m
-        xchg
-        mov e, m \ inx h \ mov d, m
-        xchg
-        call hl_to_hexstr
-        call putsi \ .db " act=$"
-        lxi d, hexstr \ mvi c, 9 \ call 5
-
-        lhld assert_adr
-        inx h \ inx h
-        mov e, m \ inx h \ mov d, m \ xchg
-        call hl_to_hexstr
-        call putsi \ .db " exp=$"
-        lxi d, hexstr \ mvi c, 9 \ call 5
-
-        jmp assert_trap_nl_exit
-
-        
-hl_to_hexstr:
-        mvi a, $f0
-        ana h
-        rar \ rar \ rar \ rar \ call a_to_hexchar \ sta hexstr + 0
-        mvi a, $0f
-        ana h
-        call a_to_hexchar \ sta hexstr + 1
-        mvi a, $f0
-        ana l
-        rar \ rar \ rar \ rar \ call a_to_hexchar \ sta hexstr + 2
-        mvi a, $0f
-        ana l
-        call a_to_hexchar \ sta hexstr + 3
-        ret
-        
-a_to_hexchar:
-	ori 0F0h
-	daa
-	cpi 60h
-	sbi 1Fh        
-        ret
-        
-assert_adr: .dw 0        
-hexstr:  .db 0, 0, 0, 0, "$"        
-        
-        
-        ; clear $1000..$2fff
-clearmem:
-        lxi h, $1000
-        lxi b, $3000
-clearmem_l0:        
-        mov m, c
-        inx h
-        mov a, h
-        cmp b
-        jnz clearmem_l0
-        ret
-        
-        ;
-        ;
-        ; EMULATOR CORE
-        ;
-        ;
-
-        .org $6000
-
-vm1_exec:
-        lhld r7
-        LOAD_DE_FROM_HL ; de = opcode, hl += 1
-        inx h
-        shld r7         ; r7 += 2
-        mov h, d
-        mov l, e        ; keep opcode in de, copy to hl
-        shld vm1_opcode
-        mov a, h
-        ani $f0         ; sel by upper 4 bits
-        mov l, a
-        mvi h, vm1_opcode1_tbl >> 8
-        pchl
-
-vm1_opcode: .dw 0
-
-        .org ( $ + 0FFH) & 0FF00H ; align 256
-vm1_opcode1_tbl:
-         
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op00:
-
-        ; HALT    000000
-        ; WAIT    000001
-        ; RTI     000002
-        ; BPT     000003
-        ; IOT     000004
-        ; RESET   000005
-        ; RTT     000006
-
-        ; JMP     0001DD  0x0040
-        ; RTS     00020R  0x0080
-
-        ; NOP     000240  0xa0
-        ; CLC, CLV, CLZ, CLN, CCC               00024x, 00025x 0xa1..0xbf
-        ; SEC, SEV, SEZ, SEN, SCC               00026x, 00027x
-        ; 
-        ; BR      000400  0x100
-        ; BNE     001000  0x200
-        ; BEQ     001400  0x3xx
-        ; BGE     002000  0x4xx
-        ; BLT     002400  0x5xx
-        ; BGT     003000  0x6xx
-        ; BLE     003400  0x7xx
-        ; JSR     004RDD  0x800.0x9ff
-        ;
-        ; CLR..TST 0050DD..0057DD 0xa00..0xbff
-        ; ROR..SXT 0060DD..0067DD 0xc00..0xdff
-        ; 
-        ; opcode in de
-        xra a
-        ora d
-        jz vm1op0x00xx ; instructions 000000..000377
-
-        cpi $a
-        jm vm1op0_0x100_0x9ff  ; branches and jsr
-        cpi $e
-        jm vm1op0xa00_0xdff  ; clr..sxt
-        rst 1  ; unknown opcode 
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op01: ; 01ssdd mov ss, dd
-opc_mov:
-        xchg  ; opcode was in de -> hl
-        push h
-        call load_ss16
-        mov b, d
-        mov c, e
-        pop h
-        call store_dd16
-        ret
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op02:
-        jmp opc_cmp
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op03:
-        jmp opc_bit
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op04:
-        jmp opc_bic
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op05:
-        jmp opc_bis
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op06:
-        jmp opc_add
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op07:
-        mvi a, $fe
-        ana d
-        cpi $78
-        jz opc_xor
-        cpi $7e
-        jz opc_sob
-        rst 1
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op10:
-        ; BPL 
-        ; BMI 
-        ; BHI 
-        ; BLS 
-        ; BVC 
-        ; BVS 
-        ; BCC 
-        ; BCS 
-        ; EMT 
-        ; TRAP
-        ; CLRB
-        ; COMB
-        ; INCB
-        ; DECB
-        ; CLRB
-        ; ADCB
-        ; SBCB
-        ; TSTB
-        ; RORB
-        ; ROLB
-        ; ASRB
-        ; ASLB
-        ; MFPD
-        ; MTPD
-        jmp vm1op10_disp
-
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op11:
-opc_movb:
-        xchg  ; opcode was in de -> hl
-        push h
-        call load_ss8
-        mov b, d
-        mov c, e
-        pop h
-        call store_dd8
-        ret
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op12:
-        jmp opc_cmpb
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op13:
-        jmp opc_bitb
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op14:
-        jmp opc_bicb
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op15:
-        jmp opc_bisb
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op16:
-        jmp opc_sub
-        .org ( $ + 0FH) & 0FFF0H ; align 16
-vm1op17:
-        rst 1
-
-        ;; non-aligned opcode microcode
-
-        ; instructions 000000..000377
-        ; HALT    000000
-        ; WAIT    000001
-        ; RTI     000002
-        ; BPT     000003
-        ; IOT     000004
-        ; RESET   000005
-        ; RTT     000006
-
-        ; JMP     0001DD  0x0040
-        ; RTS     00020R  0x0080
-
-        ; NOP     000240  0xa0
-        ;
-        ; CLC, CLV, CLZ, CLN, CCC               00024x, 00025x 0xa1..0xbf
-        ; SEC, SEV, SEZ, SEN, SCC               00026x, 00027x
-vm1op0x00xx:
-        mov a, e
-        cpi 240q  
-        jz opc_nop
-        ora a \ jz opc_halt
-        dcr a \ jz opc_wait
-        dcr a \ jz opc_rti
-        dcr a \ jz opc_bpt
-        dcr a \ jz opc_iot
-        dcr a \ jz opc_reset
-        dcr a \ jz opc_rtt
-        mvi a, 370q
-        ana e
-        cpi 240q \ jz opc_cond
-        cpi 250q \ jz opc_cond
-        cpi 260q \ jz opc_cond
-        cpi 270q \ jz opc_cond
-        cpi 200q \ jz opc_rts
-        mvi a, 300q
-        ana e
-        cpi 100q \ jz opc_jmp
-        cpi 300q \ jz opc_swab
-        rst 1
-
-        ; branches and jsr
-        ; BR      000400  0x100
-        ; BNE     001000  0x200
-        ; BEQ     001400  0x3xx
-        ; BGE     002000  0x4xx
-        ; BLT     002400  0x5xx
-        ; BGT     003000  0x6xx
-        ; BLE     003400  0x7xx
-        ; JSR     004RDD  0x800.0x9ff
-vm1op0_0x100_0x9ff:
-        mvi a, $f
-        ana d   ; 1..7 = br*, 8..15 = jsr
-        dcr a \ jz opc_br
-        dcr a \ jz opc_bne
-        dcr a \ jz opc_beq
-        dcr a \ jz opc_bge
-        dcr a \ jz opc_blt
-        dcr a \ jz opc_bgt
-        dcr a \ jz opc_ble
-        jmp opc_jsr
-        rst 1
-
-        ; CLR..TST 0050DD..0057DD 0xa00..0xbff
-        ; ROR..SXT 0060DD..0067DD 0xc00..0xdff
-        ; CLR: 0A00..0A3F << 2 = 0x28xx  ; & 0x700>>8 = 0
-        ; COM: 0A40..0A7F << 2 = 0x29xx  ; & 0x700>>8 = 1
-        ; INC: 0A80..0ABF << 2 = 0x2axx  ; & 0x700>>8 = 2
-        ; DEC: 0AC0..0AFF << 2 = 0x2bxx  ; & 0x700>>8 = 3
-        ; NEG: 0B00..0B3F << 2 = 0x2cxx  ; & 0x700>>8 = 4
-        ; ADC: 0B40..0B7F << 2 = 0x2dxx  ; & 0x700>>8 = 5
-        ; SBC: 0B80..0BBF << 2 = 0x2exx  ; & 0x700>>8 = 6
-        ; TST: 0BC0..0BFF << 2 = 0x2fxx  ; & 0x700>>8 = 7
-        ;
-        ; ROR: 0C00..0C3F << 2 = 0x30xx  ;
-        ; ROL
-        ; ASR
-        ; ASL
-        ; MARK
-        ; MFPI
-        ; MTPI
-        ; SXT
-vm1op0xa00_0xdff:
-        mov h, d
-        mov l, e
-        dad h
-        dad h
-        mvi a, $f0
-        ana h
-        cpi $30 ; ror << 2 == 0x30xx, etc
-        jz vm1op0xc00_0xdff
-        mvi a, 7
-        ana h \ jz opc_clr
-        dcr a \ jz opc_com
-        dcr a \ jz opc_inc
-        dcr a \ jz opc_dec
-        dcr a \ jz opc_neg
-        dcr a \ jz opc_adc
-        dcr a \ jz opc_sbc
-        dcr a \ jz opc_tst
-        rst 1
-vm1op0xc00_0xdff:
-        mvi a, 7
-        ana h \ jz opc_ror
-        dcr a \ jz opc_rol
-        dcr a \ jz opc_asr
-        dcr a \ jz opc_asl
-        dcr a \ jz opc_mark
-        dcr a \ jz opc_mfpi
-        dcr a \ jz opc_mtpi
-        dcr a \ jz opc_sxt
-        rst 1
-
-vm1op10_disp:
-        mvi a, $e
-        ana d
-        rar ; pick x xxx 110 x_xx xxx xxx  -> 110
-        cpi 4 \ jm vm1op10_bpl_blo
-        cpi 5 \ jm vm1op10_emt_trap
-        cpi 6 \ jm vm1op10_clrb_tstb
-        ;jmp vm1op10_rorb_mtpd
-        ; RORB
-        ; ROLB
-        ; ASRB
-        ; ASLB
-        ; MFPD
-        ; MTPD
-vm1op10_rorb_mtpd:
-        mov h, d
-        mov l, e
-        dad h
-        dad h
-        mov a, h
-        ani 7
-              \ jz opc_rorb
-        cpi 1 \ jz opc_rolb
-        cpi 2 \ jz opc_asrb
-        cpi 3 \ jz opc_aslb
-        cpi 5 \ jz opc_mfpd
-        cpi 6 \ jz opc_mtpd
-        rst 1
-
-
-        ; BPL 
-        ; BMI 
-        ; BHI 
-        ; BLS 
-        ; BVC 
-        ; BVS 
-        ; BCC 
-        ; BCS 
-vm1op10_bpl_blo:
-        mvi a, $f
-        ana d \ jz opc_bpl
-        cpi 1 \ jz opc_bmi
-        cpi 2 \ jz opc_bhi
-        cpi 3 \ jz opc_blos
-        cpi 4 \ jz opc_bvc
-        cpi 5 \ jz opc_bvs
-        cpi 6 \ jz opc_bcc
-        cpi 7 \ jz opc_bcs
-        
-        ; EMT 
-        ; TRAP
-vm1op10_emt_trap:
-        mov h, d
-        mov l, e
-        dad h
-        dad h   ; --> 20..23 = emt, 24..27 = trap
-
-        mov a, h
-        cpi $24
-        jm opc_emt
-        jmp opc_trap
-        
-        ; CLRB
-        ; COMB
-        ; INCB
-        ; DECB
-        ; CLRB
-        ; ADCB
-        ; SBCB
-        ; TSTB
-vm1op10_clrb_tstb:
-        mov h, d
-        mov l, e
-        dad h
-        dad h
-        mov a, h
-        ani 7 \ jz opc_clrb
-        dcr a \ jz opc_comb
-        dcr a \ jz opc_incb
-        dcr a \ jz opc_decb
-        dcr a \ jz opc_negb
-        dcr a \ jz opc_adcb
-        dcr a \ jz opc_sbcb
-        dcr a \ jz opc_tstb
-        rst 1
-
-        ; hl = opcode (xxssdd)
-        ; destroy everything, data in de = SS
-load_ss16:
-        dad h
-        dad h
-        mov l, h
-        ; hl = opcode (xxssdd)
-        ; destroy everything, data in de = DD
-load_dd16:        
-        ; select addr mode
-        mvi a, 070q
-        ana l
-        ral \ ral ; addr mode * 32
-        mov e, a  ; e = lsb load16[addr mode]
-        mvi a, 007q
-        ana l
-        ral
-        mov l, a  ; l = lsb reg16
-        
-        xchg
-        mvi h, load16 >> 8
-        mvi d, regfile >> 8
-        pchl
-
-        ; same as 16-bit except based on load8
-load_ss8:
-        dad h
-        dad h
-        mov l, h
-load_dd8:
-        mvi a, 070q
-        ana l
-        ral \ ral ; addr mode * 32
-        mov e, a  ; e = lsb load16[addr mode]
-        mvi a, 007q
-        ana l
-        ral
-        mov l, a  ; l = lsb reg16
-        
-        xchg
-        mvi h, load8 >> 8
-        mvi d, regfile >> 8
-        pchl
-
-        ; value in BC -> dst
-        ; 6-bit dst spec in L (3-bit mode | 3-bit reg)
-store_dd16:
-        mvi a, 070q
-        ana l \ ral \ ral \ mov e, a ; e = lsb store16[addr mode]
-        mvi a, 007q
-        ana l \ ral \ mov l, a ; l = lsb &reg16[regnum]
-        xchg
-        mvi h, store16 >> 8
-        mvi d, regfile >> 8
-        push h  ; jump addr on stack
-        xchg
-        LOAD_DE_FROM_HL_REG
-        dcx h
-        ret ; -> stwmode0..7: de = reg16[dst], hl = &reg16[dst], bc = value
-
-        ; value in C -> dst
-        ; 6-bit dst spec in L (3-bit mode | 3-bit reg)
-store_dd8:
-        mvi a, 070q
-        ana l \ ral \ ral \ mov e, a ; e = lsb store8[addr mode]
-        mvi a, 007q
-        ana l \ ral \ mov l, a ; l = lsb &reg16[regnum]
-        xchg
-        mvi h, store8 >> 8
-        mvi d, regfile >> 8
-        push h ; jump addr on stack
-        xchg
-        LOAD_DE_FROM_HL_REG
-        dcx h
-        ret ; -> stwmode0..7: de = reg16[dst], hl = &reg16[dst], bc = value
-        
-        
-        .org ( $ + 0FFH) & 0FF00H ; align 256
-regfile:        
-r0:     .dw 0
-r1:     .dw 0
-r2:     .dw 0
-r3:     .dw 0
-r4:     .dw 0
-r5:     .dw 0
-r6:     .dw 0
-r7:     .dw 0
-
-        ; load operand16 in de
-        ; 
-        .org ( $ + 0FFH) & 0FF00H ; align 256
-load16:
-        ; R
-ldwmode0:
-        xchg
-        LOAD_DE_FROM_HL_REG
-        ret
-        
-        .org load16 + 32
-        ; (R)
-ldwmode1:  
-        xchg
-        LOAD_DE_FROM_HL_REG
-        xchg
-        LOAD_DE_FROM_HL       ; de = (reg)
-        ret
-        
-        .org load16 + (32*2)
-        ; (R)+
-ldwmode2:
-        xchg
-        LOAD_DE_FROM_HL_REG        ; de = reg
-        
-        ; R += 2
-        inx d \ inx d
-
-        STORE_DE_TO_HL_REG_REVERSE
-        
-        ; restore d
-        dcx d
-        dcx d
-        
-        xchg
-        LOAD_DE_FROM_HL
-        ret
-        
-        .org load16 + (32*3)
-        ; @(R)+
-ldwmode3:
-        xchg
-        LOAD_DE_FROM_HL_REG
-        
-        ; R += 2
-        inx d
-        inx d
-        STORE_DE_TO_HL_REG_REVERSE
-        
-        ; restore d
-        dcx d
-        dcx d
-        
-        xchg                  ; hl = reg
-        LOAD_DE_FROM_HL       ; de = [hl]
-        
-        xchg
-        LOAD_DE_FROM_HL
-        ret
-        
-        .org load16 + (32*4)
-        ; -(R)
-ldwmode4:  
-        xchg
-        LOAD_DE_FROM_HL_REG
-        
-        ; R -= 2
-        dcx d
-        dcx d
-        STORE_DE_TO_HL_REG_REVERSE
-        
-        xchg                  ; hl = reg
-        LOAD_DE_FROM_HL
-        ret
-        
-        .org load16 + (32*5)
-        ; @-(R)
-ldwmode5:  
-        xchg
-        LOAD_DE_FROM_HL_REG
-        dcx d
-        dcx d                 ; de -= 2
-        STORE_DE_TO_HL_REG_REVERSE
-        xchg                  ; hl = reg
-        LOAD_DE_FROM_HL
-        xchg
-        LOAD_DE_FROM_HL
-        ret
-        
-        .org load16 + (32*6)
-        ; X(R) - result = [R + im16], im16 = [R7]
-ldwmode6:
-        xchg
-        LOAD_BC_FROM_HL_REG
-        lhld r7
-        LOAD_DE_FROM_HL ; hidden inx h
-        inx h ; pc += 2
-        shld r7
-        xchg 
-        dad b                 ; hl = R + im16
-        LOAD_DE_FROM_HL
-        ret
-
-        .org load16 + (32*7)
-        ; @X(R)
-ldwmode7:
-        xchg
-        LOAD_BC_FROM_HL_REG
-        lhld r7
-        LOAD_DE_FROM_HL
-        inx h                 ; = pc + 2
-        shld r7
-        xchg 
-        dad b                 ; hl = R + im16, adrs of adrs
-        LOAD_DE_FROM_HL
-        ; de = adrs
-        xchg
-        LOAD_DE_FROM_HL
-        ret
-
-        ;
-        ; ------ byte load modes -------
-        ;
-        ; load operand8 in e
-        .org ( $ + 0FFH) & 0FF00H ; align 256
-load8:
-        ; R
-ldbmode0:
-        xchg
-        mov e, m              ; de = reg
-        ret
-        
-        .org load8 + 32
-        ; (R)
-ldbmode1:  
-        xchg
-        LOAD_DE_FROM_HL_REG
-        xchg
-        LOAD_E_FROM_HL
-        ret
-        
-        .org load8 + (32*2)
-        ; (R)+
-ldbmode2:
-        xchg
-        LOAD_DE_FROM_HL_REG
-        
-        ; R += 1
-        inx d
-        STORE_DE_TO_HL_REG_REVERSE
-        
-        ; restore d
-        dcx d
-        
-        xchg
-        LOAD_E_FROM_HL
-        ret
-        
-        .org load8 + (32*3)
-        ; @(R)+
-ldbmode3:
-        xchg
-        LOAD_DE_FROM_HL_REG
-        ; R += 2
-        inx d
-        inx d
-        STORE_DE_TO_HL_REG_REVERSE
-        
-        ; restore d
-        dcx d
-        dcx d
-        
-        xchg                    ; hl = reg
-        LOAD_DE_FROM_HL
-        
-        xchg
-        LOAD_E_FROM_HL
-        ret
-        
-        .org load8 + (32*4)
-        ; -(R)
-ldbmode4:  
-        xchg
-        LOAD_DE_FROM_HL_REG
-        ; R -= 1
-        dcx d
-        STORE_DE_TO_HL_REG_REVERSE
-        xchg                    ; hl = reg
-        ;mov e, m
-        LOAD_E_FROM_HL
-        ret
-        
-        .org load8 + (32*5)
-        ; @-(R)
-ldbmode5:  
-        xchg
-        LOAD_DE_FROM_HL_REG
-        dcx d
-        dcx d
-        STORE_DE_TO_HL_REG_REVERSE
-        xchg                    ; hl = reg
-        LOAD_DE_FROM_HL
-        xchg
-        LOAD_E_FROM_HL
-        ret
-        
-        .org load8 + (32*6)
-        ; X(R) - result = [R + im16], im16 = [R7]
-ldbmode6:
-        xchg
-        LOAD_BC_FROM_HL_REG
-        lhld r7
-        LOAD_DE_FROM_HL         ; hidden inx h
-        inx h                   ; = pc + 2
-        shld r7
-        xchg 
-        dad b                   ; hl = R + im16
-        LOAD_E_FROM_HL
-        ret
-        
-
-        .org load8 + (32*7)
-        ; @X(R)
-ldbmode7:
-        xchg
-        LOAD_BC_FROM_HL_REG
-        lhld r7
-        LOAD_DE_FROM_HL
-        inx h ; pc += 2
-        shld r7
-        xchg 
-        dad b                   ; hl = R + im16, adrs of adrs
-        LOAD_DE_FROM_HL
-        ; de = adrs
-        xchg
-        LOAD_E_FROM_HL
-        ret
-        
-        ; DE = &reg16[dstreg]
-        ; BC = value
-        .org ( $ + 0FFH) & 0FF00H ; align 256
-store16:
-stwmode0: ; reg16[dst] = BC
-        STORE_BC_TO_HL_REG
-        ret
-        .org store16 + (32*1)
-stwmode1: ; *reg16[dst] = BC
-        xchg
-        STORE_BC_TO_HL_REG
-        ret
-
-        .org store16 + (32*2)
-stwmode2: ; *reg16[dst] = BC, reg16[dst] += 2
-        xchg                  ; hl = reg16[dst]
-        STORE_BC_TO_HL
-        inx h
-        xchg                  ; hl = &reg16[dst], de = reg16[dst] + 2
-        STORE_DE_TO_HL_REG
-        ret
-
-        .org store16 + (32*3)
-stwmode3: ; **reg16[dst] = BC, reg16[dst] += 2
-        inx d \ inx d         ; de = reg16[dst] + 2
-        STORE_DE_TO_HL_REG    ; reg16[dst] = reg16[dst] + 2
-        dcx d \ dcx d \ xchg  ; hl = old reg16[dst]
-        LOAD_DE_FROM_HL
-        xchg                  ; hl = *reg16[dst]
-        STORE_BC_TO_HL
-        ret
-
-        .org store16 + (32*4)
-stwmode4:
-        ; reg16[dst] -= 2, *reg16[dst] = BC
-        dcx d \ dcx d         ; de = reg16[dst] - 2
-        STORE_DE_TO_HL_REG    ; reg16[dst] -= 2
-        xchg
-        STORE_BC_TO_HL
-        ret
-
-        .org store16 + (32*5)
-stwmode5:
-        ; reg16[dst] -= 2, **reg16[dst] = BC
-        dcx d \ dcx d         ; de -= 2
-        STORE_DE_TO_HL_REG    ; reg16[dst] -= 2
-        xchg                  ; hl = reg16[dst] (addr of addr)
-        LOAD_DE_FROM_HL
-        xchg                  ; hl = *reg16[dst] (addr)
-        STORE_BC_TO_HL        ; **reg16[dst] = bc
-        ret
-
-        .org store16 + (32*6)
-stwmode6:
-        ; *(reg16[dst] + *r7) = BC
-        lhld r7
-        ADD_FROM_HL_TO_DE
-        xchg                  ; de = r7 + 1
-        STORE_BC_TO_HL
-        inx d                 ; r7 += 2
-        xchg
-        shld r7
-        ret
-
-        .org store16 + (32*7)
-stwmode7:
-        ;; **(reg16[dst] + *r7) = BC
-        lhld r7
-        ADD_FROM_HL_TO_DE     ; hl += 1
-        inx h                 ; = r7 + 2
-        shld r7
-        xchg
-        LOAD_DE_FROM_HL
-        xchg
-        STORE_BC_TO_HL
-        ret
-
-
-        .org ( $ + 0FFH) & 0FF00H ; align 256
-store8:
-stbmode0: ; reg16[dst].lsb = C
-        STORE_C_TO_HL_REG
-        ret
-        .org store8 + (32*1)
-stbmode1: ; *reg16[dst] = BC
-        xchg
-        mov m, c
-        ret
-
-        .org store8 + (32*2)
-stbmode2: ; *reg16[dst] = C, reg16[dst] += 1
-        xchg                  ; hl = reg16[dst], de = &reg16[dst]
-        STORE_C_TO_HL
-        xchg
-        inx d
-        STORE_DE_TO_HL_REG
-        ret
-
-        .org store8 + (32*3)
-stbmode3: ; **reg16[dst] = C, reg16[dst] += 2
-        inx d \ inx d
-        STORE_DE_TO_HL_REG    ; reg16[dst] = reg16[dst] + 2
-        dcx d \ dcx d \ xchg  ; hl = old reg16[dst]
-        LOAD_DE_FROM_HL
-        xchg                  ; hl = *reg16[dst]
-        STORE_C_TO_HL         ; **reg16[dst] = C
-        ret
-
-        .org store8 + (32*4)
-stbmode4:
-        ; reg16[dst] -= 1, *reg16[dst] = BC
-        dcx d                 ; de = reg16[dst] - 1
-        STORE_DE_TO_HL_REG    ; reg16[dst] -= 1
-        xchg
-        STORE_C_TO_HL
-        ret
-
-        .org store8 + (32*5)
-stbmode5:
-        ; reg16[dst] -= 2, **reg16[dst] = BC
-        dcx d \ dcx d         ; de -= 2
-        STORE_DE_TO_HL_REG    ; reg16[dst] -= 2
-        xchg                  ; hl = reg16[dst] (addr of addr)
-        LOAD_DE_FROM_HL
-        xchg                  ; hl = *reg16[dst] (addr)
-        STORE_C_TO_HL         ; **reg16[dst] = bc
-        ret
-
-        .org store8 + (32*6)
-stbmode6:
-        ; *(reg16[dst] + *r7) = BC
-        lhld r7
-        ADD_FROM_HL_TO_DE
-        xchg                  ; de = r7 + 1
-        STORE_C_TO_HL
-        inx d                 ; r7 += 2
-        xchg
-        shld r7
-        ret
-
-        .org store8 + (32*7)
-stbmode7:
-        lhld r7
-        ADD_FROM_HL_TO_DE
-        inx h                 ; = r7 + 2
-        shld r7
-        xchg
-        LOAD_DE_FROM_HL
-        xchg
-        STORE_C_TO_HL
-        ret
-
-        ;
-        ; OPCODE IMPLEMENTATION
-        ;
-opc_nop:  
-        ret
-opc_cond: 
-        rst 1
-opc_swab: 
-        rst 1
-opc_halt: 
-        rst 1
-opc_wait: 
-        rst 1
-opc_rti:  
-        rst 1
-opc_bpt:  
-        rst 1
-opc_iot:  
-        rst 1
-opc_reset:  
-        rst 1
-opc_rtt:  
-        rst 1
-opc_rts:  
-        rst 1
-opc_jmp:  
-        rst 1
-
-opc_br:   
-        rst 1
-opc_bne:   
-        rst 1
-opc_beq:   
-        rst 1
-opc_bge:   
-        rst 1
-opc_blt:   
-        rst 1
-opc_bgt:   
-        rst 1
-opc_ble:   
-        rst 1
-opc_jsr:   
-        rst 1
-
-opc_clr:   
-        rst 1
-opc_com:   
-        rst 1
-opc_inc:   
-        rst 1
-opc_dec:   
-        rst 1
-opc_neg:   
-        rst 1
-opc_adc:   
-        rst 1
-opc_sbc:   
-        rst 1
-opc_tst:   
-        rst 1
-
-opc_ror:   
-        rst 1
-opc_rol:   
-        rst 1
-opc_asr:   
-        rst 1
-opc_asl:   
-        rst 1
-opc_mark:   
-        rst 1
-opc_mfpi:   
-        rst 1
-opc_mtpi:   
-        rst 1
-opc_sxt:   
-        rst 1
-
-opc_cmp:
-        rst 1
-opc_bit:
-        rst 1
-opc_bic:
-        rst 1
-opc_bis:
-        rst 1
-opc_add:
-        rst 1
-opc_xor:
-        rst 1
-opc_sob:
-        rst 1
-
-opc_bpl:
-        rst 1
-opc_bmi:
-        rst 1
-opc_bhi:
-        rst 1
-opc_blos:
-        rst 1
-opc_bvc:
-        rst 1
-opc_bvs:
-        rst 1
-opc_bcc:
-        rst 1
-opc_bcs:
-        rst 1
-opc_emt:
-        rst 1
-opc_trap:
-        rst 1
-opc_clrb:
-        rst 1
-opc_comb:
-        rst 1
-opc_incb:
-        rst 1
-opc_decb:
-        rst 1
-opc_negb:
-        rst 1
-opc_adcb:
-        rst 1
-opc_sbcb:
-        rst 1
-opc_tstb:
-        rst 1
-opc_rorb:
-        rst 1
-opc_rolb:
-        rst 1
-opc_asrb:
-        rst 1
-opc_aslb:
-        rst 1
-opc_mfpd:
-        rst 1
-opc_mtpd:
-        rst 1
-opc_cmpb:
-        rst 1
-opc_bitb:
-        rst 1
-opc_bicb:
-        rst 1
-opc_bisb:
-        rst 1
-opc_sub:
-        rst 1
 
 .end

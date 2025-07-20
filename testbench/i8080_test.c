@@ -53,6 +53,46 @@
 
 #include "vm1_opcodes.h"
 
+typedef enum {
+    ATTR_HOST,
+    ATTR_GUEST,
+} attr_mode_t;
+
+attr_mode_t attrmode = ATTR_HOST;
+
+void attr_host()
+{
+    printf("\033[0m");
+}
+
+void attr_guest()
+{
+    printf("\033[93m"); // light yellow
+}
+
+void attr_reg()
+{
+    printf("\033[96m"); // light cyan
+}
+
+void attr_psw()
+{
+    printf("\033[97m"); // light blue
+}
+
+void attr_diff(int differ)
+{
+    if (differ) {
+        printf("\033[48;5;94m");
+    }
+    else {
+        printf("\033[49m");
+    }
+}
+
+extern uint16_t DisassembleInstruction(const uint16_t* pMemory, uint16_t addr, 
+        char* strInstr, char* strArg);
+
 void load_file(const char* name, unsigned char* load_to) {
     FILE* f = fopen(name, "r+b");
     int sz;
@@ -355,8 +395,11 @@ int find_in_opcode_handlers(int pc)
 int find_opcode_index(int code)
 {
     const int n = (int)(sizeof(opc_codes)/sizeof(opc_codes[0]));
+    //printf(": opcode=%06o\n", code);
     for (int i = 0; i < n; ++i) {
-        if (opc_codes[i] == code) {
+        //printf(": opc_code=%06o opc_mask=%06o  code&mask=%06o\n",
+        //        opc_codes[i], opc_masks[i], code & opc_masks[i]);
+        if (opc_codes[i] == (code & opc_masks[i])) {
             return i;
         }
     }
@@ -364,9 +407,40 @@ int find_opcode_index(int code)
     return -1;
 }
 
+void print_regs()
+{
+    unsigned char* mem = i8080_hal_memory();
+
+    static uint16_t prev_regs[9];
+
+    attr_reg();
+    for (int i = 0; i < 9; ++i) {
+        if (i == 8) {
+            attr_psw();
+        }
+        else {
+            attr_reg();
+        }
+        uint16_t reg = mem[vm1_regfile_addr + i * 2] | (mem[vm1_regfile_addr + i * 2 + 1] << 8);
+        attr_diff(reg != prev_regs[i]);
+        printf("%06o ", reg);
+        prev_regs[i] = reg;
+    }
+    attr_host();
+}
+
+uint16_t get_guest_reg(int n)
+{
+    unsigned char* mem = i8080_hal_memory();
+    return mem[vm1_regfile_addr + n * 2] | (mem[vm1_regfile_addr + n * 2 + 1] << 8);
+}
+
 void execute_test(const char* filename, int success_check) {
     unsigned char* mem = i8080_hal_memory();
     int success = 0;
+
+    char instr_buf[9];
+    char arg_buf[33];
 
     memset(mem, 0, 0x10000);
     mem[5] = 0xc3;
@@ -376,7 +450,7 @@ void execute_test(const char* filename, int success_check) {
     load_file(filename, mem + 0x100);
 
     //tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x9000]);
-    tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x8000]);
+    //tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x8000]);
 
     mem[5] = 0xC9;  // Inject RET at 0x0005 to handle "CALL 5".
     i8080_init();
@@ -386,29 +460,41 @@ void execute_test(const char* filename, int success_check) {
     int kukol = SPEED_FACTOR;
 
     while (1) {
-        tap_loop(&tapdev, cycles);
+        //tap_loop(&tapdev, cycles);
 
         int const pc = i8080_pc();
         if (mem[pc] == 0x76 || mem[pc] == 0xc7) {
             printf("HLT at %04X Total: %lu cycles\n", pc, cycles);
+
+            dump("mem", mem, 256);
             return;
+        }
+
+        if (pc == vm1_exec_addr) {
+            uint16_t pc = get_guest_reg(7);
+            DisassembleInstruction((const uint16_t *)&mem[pc], pc, 
+                    instr_buf, arg_buf);
+            printf("\n%06o: %-8s%-32s", pc, instr_buf, arg_buf);
+
+            print_regs();
         }
 
         int opc = find_in_opcode_handlers(pc);
         if (opc != -1) {
             int executed_opcode = mem[vm1_opcode_addr] | (mem[vm1_opcode_addr+1] << 8);
             const char * label = opc_labels[opc];
-            printf("opcode %s @%04x current opcode=%06o ", label, opc_addrs[opc],
-                    executed_opcode);
+
+            printf("opc: %06o %-8s @%04x", executed_opcode, label, opc_addrs[opc]);
 
             int index = find_opcode_index(executed_opcode);
             if (index >= 0 && strcmp(label+4, opc_names[index]) == 0) {
-                printf(" OK\n");
+                //printf(" OK\n");
             }
             else {
                 printf(" ERROR: expected opcode %o %s, actual label: %s\n",
                         executed_opcode, opc_names[index], label);
             }
+
         }
 
         //if (mem[pc] == 0xd3) {
@@ -423,13 +509,17 @@ void execute_test(const char* filename, int success_check) {
             // handle basic BDOS calls
             if (i8080_regs_c() == 9) {  // print string
                 int i;
+                attr_guest();
                 for (i = i8080_regs_de(); mem[i] != '$'; i += 1)
                     putchar(mem[i]);
                 success = 1;
                 fflush(stdout);
+                attr_host();
             }
             else if (i8080_regs_c() == 2) { // putchar
+                attr_guest();
                 putchar((char)i8080_regs_e());
+                attr_host();
                 fflush(stdout);
             }
         }
@@ -454,6 +544,8 @@ void execute_test(const char* filename, int success_check) {
         //    return;
         //}
     }
+
+
 }
 
 int main(int argc, char **argv) {

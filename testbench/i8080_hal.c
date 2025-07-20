@@ -33,6 +33,8 @@
 
 #include "i8080_hal.h"
 
+#include "stdio.h"
+
 unsigned char memory[0x10000];
 
 int i8080_hal_memory_read_word(int addr) {
@@ -51,6 +53,10 @@ int i8080_hal_memory_read_byte(int addr) {
 }
 
 void i8080_hal_memory_write_byte(int addr, int byte) {
+    if (addr < 256) {
+        // print scratchpad area writes
+        printf(" [%04o<-%02x]", addr, byte);
+    }
     memory[addr & 0xffff] = byte;
 }
 
