@@ -2,8 +2,8 @@
 
 set -e
 
-#TESTS="ADDRMODES MOV MOVB MOVB2 FLAGSR CLR COM INC NEG BR BRCOND SOB JMP JSR"
-TESTS="JSR"
+#TESTS="ADDRMODES MOV MOVB MOVB2 FLAGSR CLR COM INC NEG BR BRCOND SOB JMP JSR ROR RORB"
+TESTS="RORB"
 
 ./TASM.EXE -b -85 vm1.asm vm1.com |& tee tasm.log
 awk -f opcodes.awk vm1.lst > testbench/vm1_opcodes.h

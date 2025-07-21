@@ -412,9 +412,43 @@ test_mov1_pgm:
         .dw 077001q ; lup:   sob r0, lup
 #endif
 
+#ifdef TEST_ROR
+        .dw 012705q ; mov #123456, r5
+        .dw 123465q ; 
+        .dw 006005q ; ror r5
+        .dw 006105q ; rol r5
+        .dw 006205q ; asr r5
+        .dw 006305q ; asl r5
+        .dw 000257q ; ccc
+        .dw 012704q ; mov #100000, r4
+        .dw 100000q ; 
+        .dw 006104q ; rol r4
+        .dw 006004q ; ror r4
+        .dw 006304q ; asl r4
+        .dw 006204q ; asr r4
+#endif
+
+#ifdef TEST_RORB
+        .dw 012705q ; mov #123652, r5
+        .dw 123653q ; 
+        .dw 106005q ; rorb r5 
+        .dw 106105q ; rolb r5 
+        .dw 106205q ; asrb r5 
+        .dw 106305q ; aslb r5
+        .dw 000257q ; ccc
+        .dw 012704q ; mov #100200, r4
+        .dw 100200q ; 
+        .dw 106104q ; rolb r4
+        .dw 106004q ; rorb r4
+        .dw 106304q ; aslb r4
+        .dw 106204q ; asrb r4
+#endif
+
         ; missing tests
-        ; br, bne, beq, bpl, bmi, bvc, bvs, bhis, 
-        ; bcc, blo, bcs, bge, blt, ble, bhi, blos
+        ; ror, rorb
+        ; rol, rolb
+        ; asr, asrb
+        ; asl, aslb
 
         .dw 000000q       ; halt
         .dw 177777q       ; TERMINAT *
@@ -482,10 +516,10 @@ test_opcode_table:
         .dw 005500q ; ADC           
         .dw 005600q ; SBC           
         .dw 005700q ; TST           
-        .dw 006000q ; ROR           
-        .dw 006100q ; ROL           
-        .dw 006200q ; ASR           
-        .dw 006300q ; ASL           
+        .dw 006000q ; ROR 0177700
+        .dw 006100q ; ROL 0177700
+        .dw 006200q ; ASR 0177700         
+        .dw 006300q ; ASL 0177700         
         .dw 006400q ; MARK          
         .dw 006500q ; MFPI          
         .dw 006600q ; MTPI          
@@ -524,10 +558,10 @@ test_opcode_table:
         .dw 105500q ; ADCB     
         .dw 105600q ; SBCB     
         .dw 105700q ; TSTB     
-        .dw 106000q ; RORB     
-        .dw 106100q ; ROLB     
-        .dw 106200q ; ASRB     
-        .dw 106300q ; ASLB     
+        .dw 106000q ; RORB 0177700
+        .dw 106100q ; ROLB 0177700
+        .dw 106200q ; ASRB 0177700
+        .dw 106300q ; ASLB 0177700
         .dw 106500q ; MFPD     
         .dw 106600q ; MTPD     
         .dw 110000q ; MOVB 0170000
@@ -1645,7 +1679,7 @@ opc_swab:
         xra a
         ora c
         mvi a, PSW_Z
-        jnz $+4
+        jz $+4
         xra a
         ora m
         mov m, a
@@ -1696,7 +1730,7 @@ opc_rts:
         ret
 
 opc_br:   
-        nop
+        nop       ; secondary entry point for the testbench to differentiate from the main opcode
 opc_br_int:
         mvi d, 0
         mov a, e
@@ -1907,7 +1941,7 @@ opc_inc:
         mov a, b
         ora c
         mvi a, PSW_Z
-        jnz $+4
+        jz $+4
         xra a
         ora m
         mov m, a
@@ -1946,7 +1980,7 @@ opc_dec:
         mov a, b
         ora c
         mvi a, PSW_Z
-        jnz $+4
+        jz $+4
         xra a
         ora m
         mov m, a
@@ -2028,13 +2062,242 @@ opc_tst:
         rst 1
 
 opc_ror:   
-        rst 1
+        ; 0060dd ROR dd
+        xchg
+        call load_dd16
+        dcx h
+
+        mov c, e    ; remember lsb for carry aluf
+        
+        ; load carry
+        lda rpsw
+        rar 
+
+        mov a, d
+        rar       ; with carry from PSW_C
+        mov d, a
+        mov a, e
+        rar
+        mov e, a
+        STORE_DE_TO_HL
+
+        ; aluf NZVC
+ror_aluf:
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+        ; C
+        mov a, c
+        rar           ; saved lsb of source -- test low bit
+        mvi a, PSW_C
+        jc $+4
+        xra a
+        ora m
+        mov m, a
+        jmp rol_nzv
+
 opc_rol:   
-        rst 1
+        ; 0061dd ROL dd
+        xchg
+        call load_dd16
+        dcx h
+
+        mov b, d ; remember msb
+
+        xchg
+        dad h
+
+        ; carry in from PSW_C
+        lda rpsw
+        ani 1
+        ora l
+        mov l, a
+
+        xchg
+        STORE_DE_TO_HL
+rol_aluf:
+        ; aluf NZVC
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+        ; C
+        xra a
+        ora b ; saved msb of source -- test high bit
+        mvi a, PSW_C
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+        ; set NZV flags after rotation
+        ; hl = &rpsw, PSW_C already set, de = result
+rol_nzv:  
+        ; Z
+        mov a, d
+        ora e
+        mvi a, PSW_Z
+        jz $+4
+        xra a
+        ora m
+        mov m, a
+        ; N
+        xra a
+        ora d
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+        ; V = N != C
+        mvi a, PSW_N | PSW_C
+        ana m
+        rpe     ; parity even ~ N == C
+        mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+        
 opc_asr:   
-        rst 1
+        ; 0062dd ASR dd
+        xchg
+        call load_dd16
+        dcx h
+        mov c, e    ; remember lsb for ror_aluf
+        mvi a, $80
+        ana d       ; remember msb for sign extend
+        mov b, a    ; b = sign bit
+
+        mov a, d
+        rar
+        mov d, a
+        mov a, e
+        rar
+        mov e, a
+
+        mov a, d    ; put sign bit in place
+        ora b
+        mov d, a
+        STORE_DE_TO_HL
+        jmp ror_aluf
+
 opc_asl:   
-        rst 1
+        ; 0063dd
+        xchg
+        call load_dd16
+        dcx h
+        mov b, d ; remember msb for rol_aluf
+        xchg
+        dad h
+
+        xchg
+        STORE_DE_TO_HL
+        jmp rol_aluf
+
+opc_rorb:
+        ; 1060dd RORB dd
+        xchg
+        call load_dd8   ; -> e, hl = byte addr
+        ; load carry
+        lda rpsw
+        rar
+        mov a, e        ; e keeps the original
+        rar
+        mov d, a        ; d is rotated, for flags
+        STORE_A_TO_HL
+        
+        ; aluf NZVC
+rorb_aluf:
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+        ; C
+        mov a, e ; original
+        rar
+        mvi a, PSW_C
+        jc $+4
+        xra a
+        ora m
+        mov m, a
+        jmp rolb_znv
+opc_rolb:
+        ; 1061dd ROLB dd
+        xchg
+        call load_dd8  ; -> e, hl = byte addr
+        ; load carry
+        lda rpsw
+        rar
+        mov a, e        ; keep the original in e
+        ral
+        mov d, a        ; d is rotated value, for flags
+        STORE_A_TO_HL
+
+        ; aluf NZVC
+rolb_aluf:
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+        ; C
+        mov a, e ; original
+        ral
+        mvi a, PSW_C
+        jc $+4
+        xra a
+        ora m
+        mov m, a
+
+        ; h = &rpsw, PSW_C already set
+        ; d = byte value
+rolb_znv:
+        ; Z
+        mov a, d
+        ora a
+        mvi a, PSW_Z
+        jz $+4
+        xra a
+        ora m
+        mov m, a
+        ; N
+        xra a
+        ora d
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+        ; V = N != C
+        mvi a, PSW_N | PSW_C
+        ana m
+        rpe ; parity even ~ N == C
+        mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+opc_asrb:
+        ; 1062dd ASRB dd
+        xchg
+        call load_dd8 ; -> e, hl = byte addr
+        mvi a, $80
+        ana e
+        mov d, a  ; d = saved sign bit
+        mov a, e  ; e keeps the original value
+        rar
+        ora d     ; asr a
+        mov d, a  ; d is rotated, for flags
+        STORE_A_TO_HL
+        jmp rorb_aluf
+
+opc_aslb:
+        xchg
+        call load_dd8
+        mov a, e
+        add a
+        mov d, a ; for flags
+        STORE_A_TO_HL
+        jmp rolb_aluf
+
 opc_mark:   
         rst 1
 opc_mfpi:   
@@ -2142,7 +2405,7 @@ opc_incb:
         xra a 
         ora e
         mvi a, PSW_Z
-        jnz $+4
+        jz $+4
         xra a
         ora m
         mov m, a
@@ -2180,7 +2443,7 @@ opc_decb:
         xra a 
         ora e
         mvi a, PSW_Z
-        jnz $+4
+        jz $+4
         xra a
         ora m
         mov m, a
@@ -2247,14 +2510,6 @@ opc_sbcb:
         rst 1
 opc_tstb:
         rst 1
-opc_rorb:
-        rst 1
-opc_rolb:
-        rst 1
-opc_asrb:
-        rst 1
-opc_aslb:
-        rst 1
 opc_mfpd:
         rst 1
 opc_mtpd:
@@ -2279,18 +2534,19 @@ mov_setaluf_and_store:
 
         mov a, b
         ora c
-        jnz opcmov_nosetz
         mvi a, PSW_Z
+        jz $+4
+        xra a
         ora m
         mov m, a
-opcmov_nosetz:
-        mov a, b
-        add a
-        jnc opcmov_nosetn
+
+        xra a
+        ora b
         mvi a, PSW_N
+        jm $+4
+        xra a
         ora m
         mov m, a
-opcmov_nosetn:
 
         pop h
         jmp store_dd16

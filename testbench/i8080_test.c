@@ -407,6 +407,12 @@ int find_opcode_index(int code)
     return -1;
 }
 
+uint16_t get_guest_reg(int n)
+{
+    unsigned char* mem = i8080_hal_memory();
+    return mem[vm1_regfile_addr + n * 2] | (mem[vm1_regfile_addr + n * 2 + 1] << 8);
+}
+
 void print_regs()
 {
     unsigned char* mem = i8080_hal_memory();
@@ -426,14 +432,20 @@ void print_regs()
         printf("%06o ", reg);
         prev_regs[i] = reg;
     }
+
     attr_host();
+
+    uint16_t psw = get_guest_reg(8);
+
+    char flags[] = "HP..TNZVC";
+    for (int i = 0; i <= 8; ++i) {
+        if ((psw & 1) == 0) flags[8 - i] = '.';
+        psw >>= 1;
+    }
+    printf(" %s ", flags);
+
 }
 
-uint16_t get_guest_reg(int n)
-{
-    unsigned char* mem = i8080_hal_memory();
-    return mem[vm1_regfile_addr + n * 2] | (mem[vm1_regfile_addr + n * 2 + 1] << 8);
-}
 
 void execute_test(const char* filename, int success_check) {
     unsigned char* mem = i8080_hal_memory();
