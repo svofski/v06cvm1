@@ -164,6 +164,8 @@ test_mov1_pgm:
 #endif
 
 #ifdef TEST_MOVB2
+        .dw 112702q; movb #260, r2      ; attention to sign extend
+        .dw 000260q
         .dw 112702q; movb #160, r2
         .dw 000160q
         .dw 112722q ; movb #1, (r2)+
@@ -1209,7 +1211,7 @@ store_dd16:
         dcx h
         ret ; -> stwmode0..7: de = reg16[dst], hl = &reg16[dst], bc = value
 
-        ; value in C -> dst
+        ; value in C -> dst (BC for sign extended 8-bits)
         ; 6-bit dst spec in L (3-bit mode | 3-bit reg)
 store_dd8:
         mvi a, 070q
@@ -1566,8 +1568,17 @@ stwmode7:
         .org ( $ + 0FFH) & 0FF00H ; align 256
 store8:
 stbmode0: ; reg16[dst].lsb = C
+        ; for movb, store sign-extended value in reg
+        lda vm1_opcode+1
+        ani $f0
+        cpi $90   ; opcode = MOVB 11ssdd
+        jz stbmode0_with_sex
         STORE_C_TO_HL_REG
         ret
+stbmode0_with_sex:
+        STORE_BC_TO_HL_REG   ; store sign extended byte to reg
+        ret
+        
         .org store8 + (32*1)
 stbmode1: ; *reg16[dst] = BC
         xchg
@@ -2552,7 +2563,7 @@ mov_setaluf_and_store:
         jmp store_dd16
 
 movb_setaluf_and_store:
-        ; aluf N, Z, V = 0
+        ; aluf N, Z, V = 0  -- if dst is reg, sign extend
         lxi h, rpsw
         mvi a, ~(PSW_Z | PSW_N | PSW_V)
         ana m
@@ -2560,18 +2571,21 @@ movb_setaluf_and_store:
 
         mov a, c
         ora a
-        jnz opcmovb_nosetz
         mvi a, PSW_Z
+        jz $+4
+        xra a
         ora m
         mov m, a
-opcmovb_nosetz:
+
+        mvi b, -1 ; sign extend = -1
         mov a, c
         add a
-        jnc opcmovb_nosetn
         mvi a, PSW_N
+        jc $+5
+        xra a
+        mov b, a  ; sign extend = 0
         ora m
         mov m, a
-opcmovb_nosetn:
 
         pop h
         call store_dd8
