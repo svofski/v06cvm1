@@ -446,11 +446,20 @@ test_mov1_pgm:
         .dw 106204q ; asrb r4
 #endif
 
+#ifdef TEST_ADD
+        .dw 012705q ;
+        .dw 000001q ;
+        .dw 062705q ;
+        .dw 077777q ; -> V
+
+        .dw 012705q ;
+        .dw 177777q ;
+        .dw 062705q ;
+        .dw 100000q ; -> VC
+#endif
+
         ; missing tests
-        ; ror, rorb
-        ; rol, rolb
-        ; asr, asrb
-        ; asl, aslb
+        ; add
 
         .dw 000000q       ; halt
         .dw 177777q       ; TERMINAT *
@@ -531,7 +540,7 @@ test_opcode_table:
         .dw 030000q ; BIT           
         .dw 040000q ; BIC           
         .dw 050000q ; BIS           
-        .dw 060000q ; ADD           
+        .dw 060000q ; ADD  0170000
         ;.xw 070000q ; MUL       -- not in vm1
         ;.xw 071000q ; DIV       -- not in vm1
         ;.xw 072000q ; ASH       -- not in vm1
@@ -2327,7 +2336,72 @@ opc_bic:
 opc_bis:
         rst 1
 opc_add:
-        rst 1
+        ; 06ssdd ADD ss, dd  dst <- dst + src 
+        xchg
+        push h
+          call load_ss16    ; de <- src
+          mov b, d
+          mov c, e
+        pop h
+        push h
+          call load_dd16    ; de <- dst
+          mov h, d
+          mov l, e
+          dad b ; hl = dst + src
+          push h ; result 
+            push psw ; carry will be useful
+              ; overflow flag check: sign(src) == sign(dst) && sign(dst) != sign(result) 
+              ;                      sign(bc) == sign(de) && sign(de) != sign(hl) 
+              mov c, h   ; c = result msb
+
+              ; clear all the flags, hl = &rpsw
+              lxi h, rpsw
+              mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+              ana m
+              mov m, a
+
+              mov a, b
+              xra d
+              cma 
+              ani $80 ; mask sign bit 
+              mov b, a
+
+              mov a, d
+              xra c     ; result msb
+              ana b
+
+              mvi a, PSW_V
+              jm $+4
+              xra a
+              ora m
+              mov m, a  ; hooray, V bit done
+            pop psw ; carry
+            mvi a, PSW_C
+            jc $+4
+            xra a
+            ora m
+            mov m, a  ; C bit done
+          pop b ; result
+
+          mov a, b
+          ora c
+          mvi a, PSW_Z
+          jz $+4
+          xra a
+          ora m
+          mov m, a ; Z bit
+
+          xra a
+          ora b
+          mvi a, PSW_N
+          jm $+4
+          xra a
+          ora m
+          mov m, a ; N bit
+
+        pop h ; opcode
+        jmp store_dd16
+
 opc_xor:
         rst 1
 opc_sob:
