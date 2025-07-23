@@ -467,8 +467,30 @@ test_mov1_pgm:
         .dw 177775q ; 
 #endif
 
+#ifdef TEST_CMP
+        .dw 012700q ; MOV     #5, R0 ; Case 1: Equal values
+        .dw 000005q ;                                                                  
+        .dw 012701q ; MOV     #5, R1
+        .dw 000005q ;                                                                  
+        .dw 020100q ; CMP     R1, R0          ; 5 - 5: Expect: Z=1, N=0, V=0, C=0
+        .dw 012700q ; MOV     #3, R0 ; Case 2: src > dst (positive result)
+        .dw 000003q ;                                                                  
+        .dw 012701q ; MOV     #5, R1
+        .dw 000005q ;                                                                  
+        .dw 020100q ; CMP     R1, R0          ; 5 - 3 = +2: Expect: Z=0, N=0, V=0, C=0
+        .dw 012700q ; MOV     #7, R0 ; Case 3: src < dst (negative result)
+        .dw 000007q ;                                                                  
+        .dw 012701q ; MOV     #2, R1
+        .dw 000002q ; 
+        .dw 020100q ; CMP     R1, R0          ; 2 - 7 = -5: Expect: Z=0, N=1, V=0, C=1
+        .dw 022727q ; CMP     #77777,#-1      ; -> N.VC
+        .dw 077777q 
+        .dw 177777q
+#endif
+
+
         ; missing tests
-        ; add
+        ; cmp
 
         .dw 000000q       ; halt
         .dw 177777q       ; TERMINAT *
@@ -545,7 +567,7 @@ test_opcode_table:
         .dw 006600q ; MTPI          
         .dw 006700q ; SXT           
         .dw 010000q ; MOV 0170000
-        .dw 020000q ; CMP           
+        .dw 020000q ; CMP 0170000
         .dw 030000q ; BIT           
         .dw 040000q ; BIC           
         .dw 050000q ; BIS           
@@ -585,7 +607,7 @@ test_opcode_table:
         .dw 106500q ; MFPD     
         .dw 106600q ; MTPD     
         .dw 110000q ; MOVB 0170000
-        .dw 120000q ; CMPB     
+        .dw 120000q ; CMPB 0170000
         .dw 130000q ; BITB     
         .dw 140000q ; BICB     
         .dw 150000q ; BISB     
@@ -2336,8 +2358,6 @@ opc_mtpi:
 opc_sxt:   
         rst 1
 
-opc_cmp:
-        rst 1
 opc_bit:
         rst 1
 opc_bic:
@@ -2422,8 +2442,6 @@ opc_sub:
         pop h
         push h
           call load_dd16    ; de <- dst
-
-
           xra a
           ora e
           sub c
@@ -2461,6 +2479,67 @@ opc_sub:
               ora m
               mov m, a   ; V bit doneski
               jmp addsub_czn
+
+opc_cmp: 
+        ; 02ssdd CMP ss, dd   src - dst -> flags
+        xchg
+        push h
+          call load_ss16
+          mov b, d
+          mov c, e        ; bc <- src
+        pop h
+
+        call load_dd16  ; de <- dst
+        ; src - dst (sub the other way around)
+        mov a, c
+        sub e
+        mov c, a
+        mov a, b
+        sbb d
+        mov e, a        ; ec = src - dst, cf=borrow 
+        push psw
+          lxi h, rpsw
+          mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+          ana m
+          mov m, a
+
+          ; V = sign(src) != sign(dst) && sign(result) != sign(src)
+          mov a, b
+          xra d
+          ani $80
+          mov d, a
+
+          mov a, b
+          xra e
+          ana d
+
+          mvi a, PSW_V
+          jm $+4
+          xra a
+          ora m
+          mov m, a
+        pop psw
+        ; C = borrow from alu
+        mvi a, PSW_C
+        jc $+4
+        xra a
+        ora m
+        mov m, a
+
+        xra a
+        ora e
+        jm cmp_n  ; if N, Z = 0
+        ora c
+        rnz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret       ; if Z, N = 0
+cmp_n:
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
 
 opc_xor:
         rst 1
