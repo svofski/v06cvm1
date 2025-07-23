@@ -458,6 +458,15 @@ test_mov1_pgm:
         .dw 100000q ; -> VC
 #endif
 
+#ifdef TEST_SUB
+        .dw 012705q ; mov #-1, r5
+        .dw 177777q ; 
+        .dw 162705q ; sub #-32768., r5
+        .dw 100000q ; 
+        .dw 162705q ; sub #-3, r5
+        .dw 177775q ; 
+#endif
+
         ; missing tests
         ; add
 
@@ -580,7 +589,7 @@ test_opcode_table:
         .dw 130000q ; BITB     
         .dw 140000q ; BICB     
         .dw 150000q ; BISB     
-        .dw 160000q ; SUB      
+        .dw 160000q ; SUB 0170000
         .dw 177777q ; TERMINAT *
 
 ; test rst1
@@ -2375,6 +2384,7 @@ opc_add:
               xra a
               ora m
               mov m, a  ; hooray, V bit done
+addsub_czn: ; shared with opc_sub!
             pop psw ; carry
             mvi a, PSW_C
             jc $+4
@@ -2401,6 +2411,56 @@ opc_add:
 
         pop h ; opcode
         jmp store_dd16
+
+opc_sub:
+        ; 16ssdd SUB ss, dd  dst <- dst - src 
+        xchg
+        push h
+          call load_ss16    ; de <- src
+          mov b, d
+          mov c, e
+        pop h
+        push h
+          call load_dd16    ; de <- dst
+
+
+          xra a
+          ora e
+          sub c
+          mov l, a
+          mov a, d
+          sbb b
+          mov h, a ; hl = dst - src, C = borrow
+
+          push h ; result 
+            push psw ; carry will be useful
+              ; overflow flag check: sign(src) == sign(dst) && sign(dst) != sign(result) 
+              ;                      sign(bc) == sign(de) && sign(de) != sign(hl) 
+              mov c, h   ; c = result msb
+
+              ; clear all the flags, hl = &rpsw
+              lxi h, rpsw
+              mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+              ana m
+              mov m, a
+
+              ; V = sign(src) != sign(dst) && sign(result) != sign(dst)
+              ;     sign(b)   != sign(d)   && sign(c)      != sign(d)
+              mov a, b
+              xra d
+              ani $80 ; mask sign bit
+              mov b, a
+
+              mov a, c
+              xra d
+              ana b 
+
+              mvi a, PSW_V
+              jm $+4
+              xra a
+              ora m
+              mov m, a   ; V bit doneski
+              jmp addsub_czn
 
 opc_xor:
         rst 1
@@ -2607,9 +2667,6 @@ opc_bicb:
         rst 1
 opc_bisb:
         rst 1
-opc_sub:
-        rst 1
-
 mov_setaluf_and_store:
         ; aluf N, Z, V = 0
         lxi h, rpsw
