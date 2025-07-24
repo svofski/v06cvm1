@@ -501,8 +501,25 @@ test_mov1_pgm:
         .dw 122727q ; CMPB    #177,#377        ; -> N.VC
         .dw 000177q ; 
         .dw 000377q ; 
-
 #endif
+
+#ifdef TEST_MARK
+        .dw 012706q       ;       mov #400, r6
+        .dw 000400q       ;
+        .dw 012705q
+        .dw 123456q
+        .dw 004567q
+        .dw 000002q
+        .dw 000000q ; halt
+        .dw 010546q
+        .dw 010605q
+        .dw 012746q
+        .dw 000001q
+        .dw 012746q
+        .dw 000002q
+        .dw 006403q ; mark 3 ; restore r5, drop 3 words
+#endif
+
         ; missing tests
         ;
 
@@ -576,7 +593,7 @@ test_opcode_table:
         .dw 006100q ; ROL 0177700
         .dw 006200q ; ASR 0177700         
         .dw 006300q ; ASL 0177700         
-        .dw 006400q ; MARK          
+        .dw 006400q ; MARK 0177700
         .dw 006500q ; MFPI          
         .dw 006600q ; MTPI          
         .dw 006700q ; SXT           
@@ -2364,7 +2381,30 @@ opc_aslb:
         jmp rolb_aluf
 
 opc_mark:   
-        rst 1
+        ; 0064nn -- do unspeakable things
+        lhld r5
+        LOAD_BC_FROM_HL_REG ; bc = r5
+
+        mvi a, $3f
+        ana e
+        mov e, a
+        mvi d, 0
+        lhld r7
+        dad d
+        dad d       ; i = hl = r7 + 2 * nn
+
+        LOAD_DE_FROM_HL
+        inx h       ; hl = r7 + 2 * nn + 2
+        shld r6     ; R6 = ...
+        xchg
+        shld r5     ; R5 = mem[i]
+
+
+        mov h, b
+        mov l, c
+        shld r7     ; PC = R5 (before)
+        ret
+
 opc_mfpi:   
         rst 1
 opc_mtpi:   
