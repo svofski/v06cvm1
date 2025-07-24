@@ -488,9 +488,23 @@ test_mov1_pgm:
         .dw 177777q
 #endif
 
+#ifdef TEST_CMPB
+        .dw 122727q ; CMPB     #5, #5          ; 5 - 5: Expect: Z=1, N=0, V=0, C=0
+        .dw 000005q ; 
+        .dw 000005q ; 
+        .dw 122727q ; CMPB     #5, #3          ; 5 - 3 = +2: Expect: Z=0, N=0, V=0, C=0
+        .dw 000005q ; 
+        .dw 000003q ; 
+        .dw 122727q ; CMPB     #2, #7          ; 2 - 7 = -5: Expect: Z=0, N=1, V=0, C=1
+        .dw 000002q ; 
+        .dw 000007q ; 
+        .dw 122727q ; CMPB    #177,#377        ; -> N.VC
+        .dw 000177q ; 
+        .dw 000377q ; 
 
+#endif
         ; missing tests
-        ; cmp
+        ;
 
         .dw 000000q       ; halt
         .dw 177777q       ; TERMINAT *
@@ -2541,6 +2555,61 @@ cmp_n:
         mov m, a
         ret
 
+opc_cmpb:
+        ; 12ssdd CMP ss, dd  src - dst -> flags
+        xchg
+        push h
+          call load_ss8
+          mov c, e      ; c <- src
+        pop h
+        call load_dd8   ; e <- dst
+        ; src - dst
+        mov a, c
+        sub e
+        mov b, a        ; c = src, e = dst, b = src - dst, cf = borrow
+        push psw
+          lxi h, rpsw
+          mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+          ana m
+          mov m, a
+
+          ; V = sign(src) != sign(dst) && sign(result) != sign(src)
+          mov a, c
+          xra e
+          ani $80
+          mov d, a
+
+          mov a, b
+          xra c
+          ana d
+
+          mvi a, PSW_V
+          jm $+4
+          xra a
+          ora m
+          mov m, a
+        pop psw
+        mvi a, PSW_C
+        jc $+4
+        xra a
+        ora m
+        mov m, a
+
+        xra a
+        ora b
+        jm cmpb_n ; N -> no Z
+        rnz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+cmpb_n:
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
+
+
 opc_xor:
         rst 1
 opc_sob:
@@ -2737,8 +2806,6 @@ opc_tstb:
 opc_mfpd:
         rst 1
 opc_mtpd:
-        rst 1
-opc_cmpb:
         rst 1
 opc_bitb:
         rst 1
