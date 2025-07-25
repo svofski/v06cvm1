@@ -556,6 +556,38 @@ test_mov1_pgm:
         .dw 006700q       ;       sxt r0    ->  0
 #endif
 
+#ifdef TEST_BIT
+        .dw 005000q       ;       clr r0
+        .dw 052700q       ;       bis #000200, r0
+        .dw 000200q       ;       
+        .dw 052700q       ;       bis #100000, r0
+        .dw 100000q       ;       
+        .dw 042700q       ;       bic #100000, r0
+        .dw 100000q       ;       
+        .dw 032700q       ;       bit #000100, r0
+        .dw 000100q       ;       
+        .dw 032700q       ;       bit #000200, r0
+        .dw 000200q       ;       
+        .dw 042700q       ;       bic #000200, r0
+        .dw 000200q       ;     
+#endif
+
+#ifdef TEST_BITB
+        .dw 005000q       ;       clr r0
+        .dw 152700q       ;       bisb #000100, r0
+        .dw 000100q       ;       
+        .dw 152700q       ;       bisb #100200, r0
+        .dw 100200q       ;       
+        .dw 142700q       ;       bicb #100200, r0
+        .dw 100200q       ;       
+        .dw 132700q       ;       bitb #000200, r0
+        .dw 000200q       ;       
+        .dw 132700q       ;       bitb #000100, r0
+        .dw 000100q       ;       
+        .dw 142700q       ;       bicb #000100, r0
+        .dw 000100q       ;
+#endif
+
         ; missing tests
         ;
 
@@ -622,22 +654,22 @@ test_opcode_table:
         .dw 005200q ; INC  0177700        
         .dw 005300q ; DEC  0177700         
         .dw 005400q ; NEG  0177700         
-        .dw 005500q ; ADC           
-        .dw 005600q ; SBC           
-        .dw 005700q ; TST           
+        .dw 005500q ; ADC 
+        .dw 005600q ; SBC 
+        .dw 005700q ; TST 
         .dw 006000q ; ROR 0177700
         .dw 006100q ; ROL 0177700
         .dw 006200q ; ASR 0177700         
         .dw 006300q ; ASL 0177700         
         .dw 006400q ; MARK 0177700
-        .dw 006500q ; MFPI          
-        .dw 006600q ; MTPI          
+        .dw 006500q ; MFPI
+        .dw 006600q ; MTPI
         .dw 006700q ; SXT 0177700
         .dw 010000q ; MOV 0170000
         .dw 020000q ; CMP 0170000
-        .dw 030000q ; BIT           
-        .dw 040000q ; BIC           
-        .dw 050000q ; BIS           
+        .dw 030000q ; BIT 0170000
+        .dw 040000q ; BIC 0170000
+        .dw 050000q ; BIS 0170000
         .dw 060000q ; ADD  0170000
         ;.xw 070000q ; MUL       -- not in vm1
         ;.xw 071000q ; DIV       -- not in vm1
@@ -664,20 +696,20 @@ test_opcode_table:
         .dw 105200q ; INCB 0177700 
         .dw 105300q ; DECB 0177700 
         .dw 105400q ; NEGB 0177700
-        .dw 105500q ; ADCB     
-        .dw 105600q ; SBCB     
-        .dw 105700q ; TSTB     
+        .dw 105500q ; ADCB 
+        .dw 105600q ; SBCB
+        .dw 105700q ; TSTB 
         .dw 106000q ; RORB 0177700
         .dw 106100q ; ROLB 0177700
         .dw 106200q ; ASRB 0177700
         .dw 106300q ; ASLB 0177700
-        .dw 106500q ; MFPD     
-        .dw 106600q ; MTPD     
+        .dw 106500q ; MFPD
+        .dw 106600q ; MTPD
         .dw 110000q ; MOVB 0170000
         .dw 120000q ; CMPB 0170000
-        .dw 130000q ; BITB     
-        .dw 140000q ; BICB     
-        .dw 150000q ; BISB     
+        .dw 130000q ; BITB 0170000
+        .dw 140000q ; BICB 0170000
+        .dw 150000q ; BISB 0170000
         .dw 160000q ; SUB 0170000
         .dw 177777q ; TERMINAT *
 
@@ -2543,6 +2575,65 @@ opc_bis:
         STORE_BC_TO_HL_REVERSE
         jmp bit_aluf
 
+opc_bitb:
+        ; 13ssdd bitb ss, dd: src & dst, N=msb, Z=z, V=0, C no touchy
+        xchg
+        push h
+          call load_ss8
+          mov c, e        ; <- src
+        pop h
+        call load_dd8
+        mov a, c
+        ana e
+        mov c, a          ; c = src & dst
+bitb_aluf:
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V)
+        ana m
+        mov m, a
+
+        xra a
+        ora c
+        jm bitb_n
+        rnz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+bitb_n: mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
+
+opc_bicb:
+        ; 14ssdd bicb ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C no touchy
+        xchg
+        push h
+          call load_ss8
+          mov c, e
+        pop h
+        call load_dd8
+        mov a, c
+        cma
+        ana e
+        mov c, a      ; c <- dst & ~src
+        STORE_C_TO_HL
+        jmp bitb_aluf
+
+opc_bisb:
+        ; 15ssdd bisb ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
+        xchg
+        push h
+          call load_ss8
+          mov c, e
+        pop h
+        call load_dd8
+        mov a, c
+        ora e
+        mov c, a      ; c <- dst & ~src
+        STORE_C_TO_HL
+        jmp bitb_aluf
+
 opc_add:
         ; 06ssdd ADD ss, dd  dst <- dst + src 
         xchg
@@ -2964,12 +3055,6 @@ opc_tstb:
 opc_mfpd:
         rst 1
 opc_mtpd:
-        rst 1
-opc_bitb:
-        rst 1
-opc_bicb:
-        rst 1
-opc_bisb:
         rst 1
 mov_setaluf_and_store:
         ; aluf N, Z, V = 0
