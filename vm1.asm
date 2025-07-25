@@ -506,18 +506,22 @@ test_mov1_pgm:
 #ifdef TEST_MARK
         .dw 012706q       ;       mov #400, r6
         .dw 000400q       ;
-        .dw 012705q
+        .dw 012705q       ;       mov #123456, r5
         .dw 123456q
-        .dw 004567q
-        .dw 000002q
-        .dw 000000q ; halt
-        .dw 010546q
-        .dw 010605q
-        .dw 012746q
-        .dw 000001q
-        .dw 012746q
-        .dw 000002q
-        .dw 006403q ; mark 3 ; restore r5, drop 3 words
+        .dw 010546q       ;       mov r5, -(sp)
+        .dw 012746q       ;       mov #1, -(sp)
+        .dw 000001q       ;       
+        .dw 012746q       ;       mov #2, -(sp)
+        .dw 000002q       
+        .dw 012746q       ;       mov #3, -(sp)
+        .dw 000003q
+        .dw 012746q       ;       mov #MARK3, -(sp)
+        .dw 006403q
+        .dw 010605q       ;       mov sp, r5
+        .dw 004767q       ;       jsr pc, babor
+        .dw 000002q     
+        .dw 000000q       ;       halt
+        .dw 000205q       ;babor: rts r5
 #endif
 
         ; missing tests
@@ -2383,25 +2387,21 @@ opc_aslb:
 opc_mark:   
         ; 0064nn -- do unspeakable things
         lhld r5
-        LOAD_BC_FROM_HL_REG ; bc = r5
+        push h
+          mvi a, $3f
+          ana e
+          mov e, a
+          mvi d, 0
+          lhld r7
+          dad d
+          dad d       ; i = hl = r7 + 2 * nn
 
-        mvi a, $3f
-        ana e
-        mov e, a
-        mvi d, 0
-        lhld r7
-        dad d
-        dad d       ; i = hl = r7 + 2 * nn
-
-        LOAD_DE_FROM_HL
-        inx h       ; hl = r7 + 2 * nn + 2
-        shld r6     ; R6 = ...
-        xchg
-        shld r5     ; R5 = mem[i]
-
-
-        mov h, b
-        mov l, c
+          LOAD_DE_FROM_HL
+          inx h       ; hl = r7 + 2 * nn + 2
+          shld r6     ; R6 = ...
+          xchg
+          shld r5     ; R5 = mem[i]
+        pop h
         shld r7     ; PC = R5 (before)
         ret
 
