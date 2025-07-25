@@ -27,6 +27,7 @@
 #define STORE_E_TO_HL  mov m, e
 #define STORE_DE_TO_HL_REG_REVERSE mov m, d \ dcx h \ mov m, e
 #define STORE_BC_TO_HL_REG_REVERSE mov m, b \ dcx h \ mov m, c
+#define STORE_BC_TO_HL_REVERSE mov m, b \ dcx h \ mov m, c
 
 ; de = de + guest[hl], hl = hl + 1
 #define ADD_FROM_HL_TO_DE \ mov a, m \ add e \ mov e, a \ inx h \ mov a, m \ adc d \ mov d, a
@@ -299,15 +300,37 @@ test_mov1_pgm:
 #endif
 
 #ifdef TEST_INC
-        .dw 005001q ; clr r1
-        .dw 005301q ; dec r1
-        .dw 010103q ; mov r1, r3
-        .dw 005201q ; inc r1
-        .dw 010102q ; mov r1, r2
-        .dw 105302q ; decb r2
-        .dw 105202q ; incb r2
-        .dw 105203q ; incb r3 ; r3->177400
-        .dw 105303q ; decb r3 ; r3->177777
+        .dw 005001q ;     clr r1
+        .dw 005201q ;     inc r1
+        .dw 005301q ;     dec r1
+        .dw 005301q ;     dec r1
+        .dw 012701q ;     mov #77777, r1
+        .dw 077777q ;     
+        .dw 005201q ;     inc r1
+        .dw 012701q ;     mov #1, r1
+        .dw 000001q ;     
+        .dw 005301q ;     dec r1
+        .dw 005301q ;     dec r1
+        .dw 012701q ;     mov #100000, r1
+        .dw 100000q ;     
+        .dw 005301q ;     dec r1
+#endif
+
+#ifdef TEST_INCB
+        .dw 105001q ;     clrb r1
+        .dw 105201q ;     incb r1
+        .dw 105301q ;     decb r1
+        .dw 105301q ;     decb r1
+        .dw 112701q ;     movb #177, r1
+        .dw 000177q ;     
+        .dw 105201q ;     incb r1
+        .dw 112701q ;     movb #1, r1
+        .dw 000001q ;     
+        .dw 105301q ;     decb r1
+        .dw 105301q ;     decb r1
+        .dw 112701q ;     movb #200, r1
+        .dw 000200q ;     
+        .dw 105301q ;     decb r1
 #endif
 
 #ifdef TEST_NEG
@@ -524,6 +547,15 @@ test_mov1_pgm:
         .dw 000205q       ;babor: rts r5
 #endif
 
+#ifdef TEST_SXT
+        .dw 012700q       ;       mov #-100000, r0
+        .dw 100000q     
+        .dw 006700q       ;       sxt r0    -> -1
+        .dw 005200q       ;       inc r0
+        .dw 005200q       ;       inc r0
+        .dw 006700q       ;       sxt r0    ->  0
+#endif
+
         ; missing tests
         ;
 
@@ -600,7 +632,7 @@ test_opcode_table:
         .dw 006400q ; MARK 0177700
         .dw 006500q ; MFPI          
         .dw 006600q ; MTPI          
-        .dw 006700q ; SXT           
+        .dw 006700q ; SXT 0177700
         .dw 010000q ; MOV 0170000
         .dw 020000q ; CMP 0170000
         .dw 030000q ; BIT           
@@ -2024,30 +2056,29 @@ opc_inc:
         mvi a, ~(PSW_N | PSW_Z | PSW_V)
         ana m
         mov m, a
-        mov a, b
-        ora c
-        mvi a, PSW_Z
-        jz $+4
+        
         xra a
-        ora m
-        mov m, a
-
-        xra a
-        ora b
+        ora d
+        jp inc_testz
+        ;
         mvi a, PSW_N
-        jm $+4
-        xra a
         ora m
         mov m, a
-
         ; V flag dst == 0100000
-        mov a, c
+        mov a, e
         ora a
         rnz
         mvi a, $80
-        cmp b
+        cmp d
         rnz
         mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+inc_testz:
+        ora e
+        rnz
+        mvi a, PSW_Z
         ora m
         mov m, a
         ret
@@ -2058,37 +2089,36 @@ opc_dec:
         dcx h
         dcx d
         STORE_DE_TO_HL
+
         ; aluf NZV
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V)
         ana m
         mov m, a
-        mov a, b
-        ora c
-        mvi a, PSW_Z
-        jz $+4
-        xra a
-        ora m
-        mov m, a
 
-        mov a, b
-        add a
-        mvi a, PSW_N
-        jnc $+4
         xra a
-        ora m
-        mov m, a
-
-        ; V flag dst == 0100000
-        inr c
+        ora d
+        jm dec_n
+        ora e
+        jz dec_z
+        inr e
         rnz
         mvi a, $7f
-        cmp b
+        cmp d
         rnz
-        mvi a, PSW_V
+        mvi a, PSW_V ; V flag dst == 077777
         ora m
         mov m, a
         ret
+dec_n:  mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
+dec_z:  mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+
 
 opc_neg:   
         xchg
@@ -2410,14 +2440,109 @@ opc_mfpi:
 opc_mtpi:   
         rst 1
 opc_sxt:   
-        rst 1
+        ; 0067dd sxt dd: dd = N ? -1 : 0
+        ; de = opcode, keep it there
+        lxi h, rpsw
+        mvi a, PSW_N
+        ana m
+        mvi a, $ff
+        jnz $+4
+        xra a
+        mov b, a
+        mov c, a
+
+        mvi a, ~PSW_V
+        ana m
+        mov m, a
+        xra a
+        ora c
+        mvi a, PSW_Z
+        jz $+4
+        xra a
+        ora m
+        mov m, a
+
+        xchg
+        jmp store_dd16
 
 opc_bit:
-        rst 1
+        ; 03ssdd bit ss, dd: src & dst, N=msb, Z=z, V=0, C not touched
+        xchg
+        push h
+          call load_ss16
+          mov b, d        ; bc <- src
+          mov c, e
+        pop h
+
+        call load_dd16    ; de <- dst
+        mov a, b
+        ana d
+        mov b, a
+        mov a, c
+        ana e
+        mov c, a          ; bc = src & dst
+
+        ; BIT-like set flags based on result in BC
+bit_aluf: 
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V)
+        ana m
+        mov m, a
+
+        xra a
+        ora b
+        jm bit_n
+        ora c
+        rnz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+
+bit_n:  mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
+        
 opc_bic:
-        rst 1
+        ; 04ssdd bic ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C not touched
+        xchg
+        push h
+          call load_ss16
+          mov b, d
+          mov c, e        ; bc <- src
+        pop h
+        call load_dd16    ; de <- dst, hl = dst+1
+        mov a, c
+        cma
+        ana e
+        mov c, a
+
+        mov a, b
+        cma
+        ana d
+        mov b, a          ; bc <- dst & ~src
+        STORE_BC_TO_HL_REVERSE
+        jmp bit_aluf
+
 opc_bis:
-        rst 1
+        ; 05ssdd bis ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
+        xchg
+        push h
+          call load_ss16
+          mov b, d
+          mov c, e
+        pop h
+        call load_dd16
+        mov a, c
+        ora e
+        mov c, a
+        mov a, b
+        ora d
+        mov b, a
+        STORE_BC_TO_HL_REVERSE
+        jmp bit_aluf
+
 opc_add:
         ; 06ssdd ADD ss, dd  dst <- dst + src 
         xchg
@@ -2727,7 +2852,7 @@ opc_incb:
         xchg
         call load_dd8
         inr e
-        STORE_C_TO_HL
+        STORE_E_TO_HL
 
         ; aluf NZV
         lxi h, rpsw
@@ -2737,21 +2862,11 @@ opc_incb:
 
         xra a 
         ora e
-        mvi a, PSW_Z
-        jz $+4
-        xra a
-        ora m
-        mov m, a
-
-        xra a
-        ora e
+        jp incb_testz
         mvi a, PSW_N
-        jm $+4
-        xra a
         ora m
         mov m, a
-
-        ; V flag dst == $80
+        ; V flag if dst == $80
         mvi a, $80
         cmp e
         rnz
@@ -2759,7 +2874,12 @@ opc_incb:
         ora m
         mov m, a
         ret
-
+incb_testz:
+        rnz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
 
 opc_decb:
         xchg
@@ -2775,25 +2895,23 @@ opc_decb:
 
         xra a 
         ora e
-        mvi a, PSW_Z
-        jz $+4
-        xra a
-        ora m
-        mov m, a
+        jz decb_z
+        jm decb_n
 
-        xra a
-        ora e
-        mvi a, PSW_N
-        jm $+4
-        xra a
-        ora m
-        mov m, a
-
-        ; V flag dst == $80
+        ; V flag dst == $7f
         mvi a, $7f
         cmp e
         rnz
         mvi a, PSW_V
+        ora m
+        mov m, a
+        ret
+
+decb_n: mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
+decb_z: mvi a, PSW_Z
         ora m
         mov m, a
         ret
