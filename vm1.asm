@@ -589,7 +589,11 @@ test_mov1_pgm:
 #endif
 
         ; missing tests
-        ;
+        ; halt, wait, rti, bpt, iot, reset, rtt
+        ; adc, sbc, tst
+        ; adcb, sbcb, tstb
+        ; mfps 1067dd, mtps 1064ss
+        ; emt, trap
 
         .dw 000000q       ; halt
         .dw 177777q       ; TERMINAT *
@@ -703,8 +707,10 @@ test_opcode_table:
         .dw 106100q ; ROLB 0177700
         .dw 106200q ; ASRB 0177700
         .dw 106300q ; ASLB 0177700
+        .dw 106400q ; MTPS 0177700
         .dw 106500q ; MFPD
         .dw 106600q ; MTPD
+        .dw 106700q ; MFPS 0177700
         .dw 110000q ; MOVB 0170000
         .dw 120000q ; CMPB 0170000
         .dw 130000q ; BITB 0170000
@@ -1228,8 +1234,10 @@ vm1op10_rorb_mtpd:
         cpi 1 \ jz opc_rolb
         cpi 2 \ jz opc_asrb
         cpi 3 \ jz opc_aslb
+        cpi 4 \ jz opc_mtps
         cpi 5 \ jz opc_mfpd
         cpi 6 \ jz opc_mtpd
+        cpi 7 \ jz opc_mfps
         rst 1
 
 
@@ -2468,8 +2476,10 @@ opc_mark:
         ret
 
 opc_mfpi:   
+        ; not in vm1
         rst 1
-opc_mtpi:   
+opc_mtpi:
+        ; not in vm1
         rst 1
 opc_sxt:   
         ; 0067dd sxt dd: dd = N ? -1 : 0
@@ -3052,9 +3062,17 @@ opc_sbcb:
         rst 1
 opc_tstb:
         rst 1
+opc_mfps:
+        ; 1067dd: psw -> dst
+        rst 1
+opc_mtps:
+        ; 1064dd: dst -> psw
+        rst 1
 opc_mfpd:
+        ; not in vm1
         rst 1
 opc_mtpd:
+        ; not in vm1
         rst 1
 mov_setaluf_and_store:
         ; aluf N, Z, V = 0
