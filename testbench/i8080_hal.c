@@ -35,7 +35,10 @@
 
 #include "stdio.h"
 
-unsigned char memory[0x10000];
+#include "memory.h"
+
+//unsigned char memory[0x10000];
+Memory memory;
 
 int i8080_hal_memory_read_word(int addr) {
     return 
@@ -49,7 +52,7 @@ void i8080_hal_memory_write_word(int addr, int word) {
 }
 
 int i8080_hal_memory_read_byte(int addr) {
-    return memory[addr & 0xffff];
+    return memory.read(addr, false); //memory[addr & 0xffff];
 }
 
 void i8080_hal_memory_write_byte(int addr, int byte) {
@@ -57,7 +60,8 @@ void i8080_hal_memory_write_byte(int addr, int byte) {
         // print scratchpad area writes
         printf(" [%04o<-%02x]", addr, byte);
     }
-    memory[addr & 0xffff] = byte;
+    //memory[addr & 0xffff] = byte;
+    memory.write(addr, byte, false);
 }
 
  __attribute__((weak))
@@ -69,13 +73,12 @@ int i8080_hal_io_input(int port)
 __attribute__((weak))
 void i8080_hal_io_output(int port, int value)
 {
-    // Nothing.
+    if (port == 0x10) {
+        memory.control_write(value & 0377);
+    }
 }
 
 void i8080_hal_iff(int on) {
     // Northing.
 }
 
-unsigned char* i8080_hal_memory(void) {
-    return &memory[0];
-}

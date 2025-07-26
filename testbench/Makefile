@@ -8,13 +8,14 @@ ifeq ($(OS),Windows_NT)
 else
   RUN_PREFIX = ./
   #CC = cc -O3 -o $(IMAGE)
-  CC = g++ -O0 -g -o $(IMAGE) -Idisass
+  CC = g++ -std=c++17 -O0 -g -o $(IMAGE) -Idisass
 endif
 
 FILES = \
   i8080.c \
   i8080_hal.c \
   i8080_test.c \
+  memory.cpp \
   disass/Disasm.cpp
 
 build:	$(FILES)

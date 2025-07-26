@@ -45,6 +45,4 @@ extern void i8080_hal_io_output(int port, int value);
 
 extern void i8080_hal_iff(int on);
 
-extern unsigned char* i8080_hal_memory(void);
-
 #endif

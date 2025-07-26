@@ -28,6 +28,7 @@
 #define STORE_DE_TO_HL_REG_REVERSE mov m, d \ dcx h \ mov m, e
 #define STORE_BC_TO_HL_REG_REVERSE mov m, b \ dcx h \ mov m, c
 #define STORE_BC_TO_HL_REVERSE mov m, b \ dcx h \ mov m, c
+#define STORE_DE_TO_HL_REVERSE mov m, d \ dcx h \ mov m, e
 
 ; de = de + guest[hl], hl = hl + 1
 #define ADD_FROM_HL_TO_DE \ mov a, m \ add e \ mov e, a \ inx h \ mov a, m \ adc d \ mov d, a
@@ -43,6 +44,14 @@
 #define PSW_T           16     ; Trap/Debug
 #define PSW_P           0200   ; Priority
 #define PSW_HALT        0400   ; Halt
+
+#define RQ_EMT    1
+#define RQ_TRAP   2
+#define RQ_BPT    4
+#define RQ_IOT    8
+#define RQ_RPLY   16
+#define RQ_HALT   32
+#define RQ_RSVD   64  ; nonexistent instruction
         
         lxi d, $1234
         call assert_de_equals
@@ -106,6 +115,63 @@ test_mov_1:
         shld r7
 tm1_loop:
         call vm1_exec
+        ; process interruptsies
+        lxi h, intflg
+        xra a
+        ora m
+        jz tm1_loop_end
+
+        mvi a, RQ_EMT
+        ana m
+        jz vm1int_emt_not
+        ; emt 
+        mvi a, ~RQ_EMT    ; clear RQ_EMT flag
+        ana m
+        mov m, a
+        lxi h, 30q
+        jmp tm1_loop_enter_interrupt
+vm1int_emt_not:
+        mvi a, RQ_TRAP
+        ana m
+        jz vm1int_trap_not
+        ; it's a trap
+        mvi a, ~RQ_TRAP   ; clear RQ_TRAP flag
+        ana m
+        mov m, a
+        lxi h, 34q
+        jmp tm1_loop_enter_interrupt
+vm1int_trap_not:
+        mvi a, RQ_RPLY
+        ana m
+        jz vm1int_rply_not
+
+        ; rply/trap to 4
+        mvi a, ~RQ_RPLY   ; clear RQ_RPLY flag
+        ana m
+        mov m, a
+        lxi h, 4q
+        jmp tm1_loop_enter_interrupt
+vm1int_rply_not:
+
+        mvi a, RQ_RSVD
+        ana m
+        jz vm1int_rsvd_not
+        ; reserved insn, trap to 10
+        mvi a, ~RQ_RSVD
+        ana m
+        mov m, a
+        lxi h, 10q
+        jmp tm1_loop_enter_interrupt
+vm1int_rsvd_not:
+
+        hlt
+        jmp $   ; impossible, stop
+
+tm1_loop_enter_interrupt:
+        lxi d, tm1_loop_end
+        push d
+        jmp opx_interrupt
+tm1_loop_end:
         lhld vm1_opcode
         mov a, h
         ora l
@@ -588,6 +654,19 @@ test_mov1_pgm:
         .dw 000100q       ;
 #endif
 
+#ifdef TEST_RTI
+        .dw 012706q       ;       mov #400, sp
+        .dw 000400q
+        .dw 012737q       ;       mov #handlur, @#4
+        .dw 001022q       
+        .dw 000004q       
+        .dw 106427q       ;       mtps #017  ; set NZVC = 017 = $0f
+        .dw 000017q
+        .dw 000100q       ;       jmp r0    ; trap to 4!
+        .dw 000000q       ;       halt
+        .dw 000002q       ;       rti
+#endif
+
         ; missing tests
         ; halt, wait, rti, bpt, iot, reset, rtt
         ; adc, sbc, tst
@@ -730,6 +809,14 @@ rst1_handler:
   
         call putsi \ .db " opcode not implemented", 10, 13, '$'
         pop h
+
+        ;; trap to 10
+
+        ;lxi h, intflg
+        ;mvi a, RQ_RSVD
+        ;ora m
+        ;mov m, a
+        ;pop psw         ; drop normal return addr
         ret
 
         ; call setreg \ .dw r3 \ .dw $1234
@@ -1386,6 +1473,9 @@ r5:     .dw 0
 r6:     .dw 0
 r7:     .dw 0
 rpsw:   .dw 0
+
+intflg: .db 0
+
 regfile_end .equ $
 
         ; load operand16 in de
@@ -1856,8 +1946,6 @@ opc_halt:
         rst 1
 opc_wait: 
         rst 1
-opc_rti:  
-        rst 1
 opc_bpt:  
         rst 1
 opc_iot:  
@@ -1885,6 +1973,27 @@ opc_rts:
         shld r6   ; r6 += 2
         xchg
         STORE_BC_TO_HL_REG_REVERSE  ; R = bc
+        ret
+
+opc_rti:  
+        lhld r6
+        LOAD_DE_FROM_HL   ; pop pc -> bc
+        inx h             ; sp += 2
+        ; --
+        xchg
+        shld r7
+        xchg
+        ; -- 
+        LOAD_DE_FROM_HL   ; pop psw -> de
+        inx h             ; sp += 2
+        shld r6           ; save sp
+        ; -- preserve halt flag
+        lda rpsw+1
+        ani ~(PSW_HALT >> 8)
+        ora d
+        mov d, a          ; new psw with HALT flag
+        xchg
+        shld rpsw
         ret
 
 opc_br:   
@@ -1991,10 +2100,21 @@ opc_bcs:
         ret
 
 opc_jmp:  
+        ; 0001dd
+        mvi a, 30q
+        ana e
+        jz jmp_trap
         xchg
         call load_dd16  
         dcx h             ; ignore the operand, use its addr as new pc value
         shld r7
+        ret
+jmp_trap:
+        ; impossibru addressing mode
+        lxi h, intflg
+        mvi a, RQ_RPLY
+        ora m
+        mov m, a
         ret
 
 opc_jsr:   
@@ -2911,9 +3031,52 @@ opc_sob:
         ret
 
 opc_emt:
-        rst 1
+        lxi h, intflg
+        mvi a, RQ_EMT
+        ora m
+        mov m, a
+        ret
+
 opc_trap:
-        rst 1
+        lxi h, intflg
+        mvi a, RQ_TRAP
+        ora m
+        mov m, a
+        ret
+
+        ; a special entry point, see main cpu loop
+opx_interrupt:
+        push h                                ; save int vector
+          lxi h, rpsw
+          mov c, m
+          inx h
+          mov b, m    ; bc = old psw
+
+          mvi a, ~(PSW_HALT >> 8)
+          ana m
+          mov m, a                            ; clear PSW_HALT
+
+          lhld r6 \ dcx h                     ; sp -= 2
+          STORE_BC_TO_HL_REVERSE              ; *sp = old psw
+          dcx h
+          xchg
+          lhld r7
+          xchg
+          STORE_DE_TO_HL_REVERSE
+          shld r6                             ; sp -= 2 (store)
+        pop h
+        ; load vector
+        mov e, m
+        inx h
+        mov d, m
+        xchg
+        shld r7
+        inx h \ inx h
+        mov l, m
+        mvi h, 0
+        shld rpsw                             ;  set psw from vector
+        ret
+
 opc_clrb:
         xchg
         call load_dd8
@@ -3067,7 +3230,27 @@ opc_mfps:
         rst 1
 opc_mtps:
         ; 1064dd: dst -> psw
-        rst 1
+        xchg
+        call load_dd16  ; de <- dd
+
+        lxi h, rpsw + 1
+        mvi a, PSW_HALT >> 8
+        ana m
+        jz mtps_user
+mtps_halt:
+        ora d
+        mov m, a
+        dcx h
+        mov m, e
+        ret
+mtps_user:
+        dcx h   ; msb of psw unchanged 
+        mvi a, PSW_T
+        ana m   ; keep T bit
+        ora e   ; set bits from dst
+        mov m, a
+        ret
+
 opc_mfpd:
         ; not in vm1
         rst 1

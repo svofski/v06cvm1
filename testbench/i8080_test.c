@@ -93,8 +93,13 @@ void attr_diff(int differ)
 extern uint16_t DisassembleInstruction(const uint16_t* pMemory, uint16_t addr, 
         char* strInstr, char* strArg);
 
-void load_file(const char* name, unsigned char* load_to) {
+void load_file(const char* name, int addr)
+{
     FILE* f = fopen(name, "r+b");
+
+    static uint8_t buffer[65536];
+    uint8_t * load_to = &buffer[0];
+
     int sz;
     if (!f) {
         fprintf(stderr, "Unable to open file \"%s\"\n", name);
@@ -109,6 +114,10 @@ void load_file(const char* name, unsigned char* load_to) {
     }
     printf("\n*********************************\n");
     printf("File \"%s\" loaded, size %d\n", name, sz);
+
+    for (size_t n = 0; n < sz; ++n) {
+        i8080_hal_memory_write_byte(n + addr, buffer[n]);
+    }
 }
 
 void trace_zpu(unsigned char * mem)
@@ -161,13 +170,13 @@ tap_t tapdev;
 
 void tap_send(tap_t * tap);
 
-void dump(const char * ff, uint8_t * buf, size_t ret)
+void dump(const char * ff, size_t ret)
 {
     printf("HOST: %s %lu bytes\n", ff, ret);
     for (int i = 0; i < ret + 16; i += 16) {
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
-                printf("%02x%c", buf[i+j], j == 7 ? '-' : ' ');
+                printf("%02x%c", i8080_hal_memory_read_byte(i+j), j == 7 ? '-' : ' ');
             }
             else {
                 printf("   ");
@@ -176,7 +185,7 @@ void dump(const char * ff, uint8_t * buf, size_t ret)
         printf("  ");
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
-                int c = buf[i+j];
+                int c = i8080_hal_memory_read_byte(i+j);
                 printf("%c", (c >= 0x20 && c < 0x7f) ? c : '.');
             }
             else {
@@ -409,13 +418,14 @@ int find_opcode_index(int code)
 
 uint16_t get_guest_reg(int n)
 {
-    unsigned char* mem = i8080_hal_memory();
-    return mem[vm1_regfile_addr + n * 2] | (mem[vm1_regfile_addr + n * 2 + 1] << 8);
+    //unsigned char* mem = i8080_hal_memory();
+    //return mem[vm1_regfile_addr + n * 2] | (mem[vm1_regfile_addr + n * 2 + 1] << 8);
+    return i8080_hal_memory_read_word(vm1_regfile_addr + n * 2);
 }
 
 void print_regs()
 {
-    unsigned char* mem = i8080_hal_memory();
+    //unsigned char* mem = i8080_hal_memory();
 
     static uint16_t prev_regs[9];
 
@@ -427,7 +437,8 @@ void print_regs()
         else {
             attr_reg();
         }
-        uint16_t reg = mem[vm1_regfile_addr + i * 2] | (mem[vm1_regfile_addr + i * 2 + 1] << 8);
+        //uint16_t reg = mem[vm1_regfile_addr + i * 2] | (mem[vm1_regfile_addr + i * 2 + 1] << 8);
+        uint16_t reg = get_guest_reg(i);
         attr_diff(reg != prev_regs[i]);
         printf("%06o ", reg);
         prev_regs[i] = reg;
@@ -448,23 +459,23 @@ void print_regs()
 
 
 void execute_test(const char* filename, int success_check) {
-    unsigned char* mem = i8080_hal_memory();
+    //unsigned char* mem = i8080_hal_memory();
     int success = 0;
 
     char instr_buf[9];
     char arg_buf[33];
 
-    memset(mem, 0, 0x10000);
-    mem[5] = 0xc3;
-    mem[6] = 0x00;
-    mem[7] = 0xc0;
+    //memset(mem, 0, 0x10000);
+    i8080_hal_memory_write_byte(5, 0xc3);
+    i8080_hal_memory_write_byte(6, 0x00);
+    i8080_hal_memory_write_byte(7, 0xc0);
 
-    load_file(filename, mem + 0x100);
+    load_file(filename, 0x100);
 
     //tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x9000]);
     //tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x8000]);
 
-    mem[5] = 0xC9;  // Inject RET at 0x0005 to handle "CALL 5".
+    i8080_hal_memory_write_byte(5, 0xC9);  // Inject RET at 0x0005 to handle "CALL 5".
     i8080_init();
     i8080_jump(0x100);
     uint64_t cycles = 0;
@@ -475,16 +486,20 @@ void execute_test(const char* filename, int success_check) {
         //tap_loop(&tapdev, cycles);
 
         int const pc = i8080_pc();
-        if (mem[pc] == 0x76 || mem[pc] == 0xc7) {
+        if (i8080_hal_memory_read_byte(pc) == 0x76 || i8080_hal_memory_read_byte(pc) == 0xc7) {
             printf("HLT at %04X Total: %lu cycles\n", pc, cycles);
 
-            dump("mem", mem, 256);
+            dump("mem", 256);
             return;
         }
 
         if (pc == vm1_exec_addr) {
             uint16_t pc = get_guest_reg(7);
-            DisassembleInstruction((const uint16_t *)&mem[pc], pc, 
+            uint16_t insnbuf[3];
+            for (int i = 0; i < 3; ++i) {
+                insnbuf[i] = i8080_hal_memory_read_word(pc + i * 2);
+            }
+            DisassembleInstruction(insnbuf, pc, 
                     instr_buf, arg_buf);
             printf("\n%06o: %-8s%-32s", pc, instr_buf, arg_buf);
 
@@ -493,7 +508,7 @@ void execute_test(const char* filename, int success_check) {
 
         int opc = find_in_opcode_handlers(pc);
         if (opc != -1) {
-            int executed_opcode = mem[vm1_opcode_addr] | (mem[vm1_opcode_addr+1] << 8);
+            int executed_opcode = i8080_hal_memory_read_word(vm1_opcode_addr);
             const char * label = opc_labels[opc];
 
             printf("opc: %06o %-8s @%04x", executed_opcode, label, opc_addrs[opc]);
@@ -520,10 +535,10 @@ void execute_test(const char* filename, int success_check) {
         if (pc == 0x0005) {
             // handle basic BDOS calls
             if (i8080_regs_c() == 9) {  // print string
-                int i;
+                int i, c;
                 attr_guest();
-                for (i = i8080_regs_de(); mem[i] != '$'; i += 1)
-                    putchar(mem[i]);
+                for (i = i8080_regs_de(); (c = i8080_hal_memory_read_byte(i)) != '$'; i += 1)
+                    putchar(c);
                 success = 1;
                 fflush(stdout);
                 attr_host();

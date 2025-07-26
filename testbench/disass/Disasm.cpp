@@ -16,6 +16,8 @@ BKBTL. If not, see <http://www.gnu.org/licenses/>. */
 #include "Defines.h"
 //#include "Emubase.h"
 
+// annoying warnings stfu
+#pragma GCC diagnostic ignored "-Wformat-truncation"
 
 // Формат отображения режимов адресации
 const LPCTSTR ADDRESS_MODE_FORMAT[] =
