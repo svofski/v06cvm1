@@ -40,28 +40,28 @@
 //unsigned char memory[0x10000];
 Memory memory;
 
-int i8080_hal_memory_read_word(int addr) {
+int i8080_hal_memory_read_word(int addr, bool stack) {
     return 
-        (i8080_hal_memory_read_byte(addr + 1) << 8) |
-        i8080_hal_memory_read_byte(addr);
+        (i8080_hal_memory_read_byte(addr + 1, stack) << 8) |
+        i8080_hal_memory_read_byte(addr, stack);
 }
 
-void i8080_hal_memory_write_word(int addr, int word) {
-    i8080_hal_memory_write_byte(addr, word & 0xff);
-    i8080_hal_memory_write_byte(addr + 1, (word >> 8) & 0xff);
+void i8080_hal_memory_write_word(int addr, int word, bool stack) {
+    i8080_hal_memory_write_byte(addr, word & 0xff, stack);
+    i8080_hal_memory_write_byte(addr + 1, (word >> 8) & 0xff, stack);
 }
 
-int i8080_hal_memory_read_byte(int addr) {
-    return memory.read(addr, false); //memory[addr & 0xffff];
+int i8080_hal_memory_read_byte(int addr, bool stack) {
+    return memory.read(addr, stack);
 }
 
-void i8080_hal_memory_write_byte(int addr, int byte) {
+void i8080_hal_memory_write_byte(int addr, int byte, bool stack) {
     if (addr < 256) {
         // print scratchpad area writes
         printf(" [%04o<-%02x]", addr, byte);
     }
     //memory[addr & 0xffff] = byte;
-    memory.write(addr, byte, false);
+    memory.write(addr, byte, stack);
 }
 
  __attribute__((weak))

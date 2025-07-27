@@ -170,13 +170,30 @@ tap_t tapdev;
 
 void tap_send(tap_t * tap);
 
+
+void kvaz(int on)
+{
+    if (on) {
+#ifdef WITH_KVAZ
+        i8080_hal_io_output(0x10, 0x10);
+#endif
+    }
+    else {
+#ifdef WITH_KVAZ
+        i8080_hal_io_output(0x10, 0x0);
+#endif
+    }
+}
+
+
 void dump(const char * ff, size_t ret)
 {
+    kvaz(1);
     printf("HOST: %s %lu bytes\n", ff, ret);
     for (int i = 0; i < ret + 16; i += 16) {
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
-                printf("%02x%c", i8080_hal_memory_read_byte(i+j), j == 7 ? '-' : ' ');
+                printf("%02x%c", i8080_hal_memory_read_byte(i+j, true), j == 7 ? '-' : ' ');
             }
             else {
                 printf("   ");
@@ -185,7 +202,7 @@ void dump(const char * ff, size_t ret)
         printf("  ");
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
-                int c = i8080_hal_memory_read_byte(i+j);
+                int c = i8080_hal_memory_read_byte(i+j, true);
                 printf("%c", (c >= 0x20 && c < 0x7f) ? c : '.');
             }
             else {
@@ -194,6 +211,7 @@ void dump(const char * ff, size_t ret)
         }
         printf("\n");
     }
+    kvaz(0);
 }
 
 void tap_init(tap_t * tap, const char * devtap, uint8_t * rxbuf, uint8_t * txbuf)
@@ -360,6 +378,7 @@ void tap_loop(tap_t * tap, uint64_t cycle)
     }
 }
 
+#if 0
 void i8080_hal_io_output(int port, int value)
 {
     switch (port) {
@@ -371,6 +390,7 @@ void i8080_hal_io_output(int port, int value)
             break;
     }
 }
+
 
 int i8080_hal_io_input(int port)
 {
@@ -385,6 +405,7 @@ int i8080_hal_io_input(int port)
     }
     return 0;
 }
+#endif
 
 //#define SPEED_FACTOR 128
 #define SPEED_FACTOR (1<<31)
@@ -496,9 +517,11 @@ void execute_test(const char* filename, int success_check) {
         if (pc == vm1_exec_addr) {
             uint16_t pc = get_guest_reg(7);
             uint16_t insnbuf[3];
+            kvaz(1);
             for (int i = 0; i < 3; ++i) {
-                insnbuf[i] = i8080_hal_memory_read_word(pc + i * 2);
+                insnbuf[i] = i8080_hal_memory_read_word(pc + i * 2, true);
             }
+            kvaz(0);
             DisassembleInstruction(insnbuf, pc, 
                     instr_buf, arg_buf);
             printf("\n%06o: %-8s%-32s", pc, instr_buf, arg_buf);

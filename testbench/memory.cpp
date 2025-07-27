@@ -87,6 +87,9 @@ uint8_t Memory::read(uint32_t addr, bool stackrq, const bool _is_opcode) const
     }
 #endif
 
+    //if (bigaddr > 0xffff)
+    //    printf("read(%05x)->%02x\n", bigaddr, value);
+
     return value;
 }
 
@@ -110,6 +113,11 @@ uint8_t Memory::get_byte(uint32_t addr, bool stackrq) const
 void Memory::write(uint32_t addr, uint8_t w8, bool stackrq)
 {
     uint32_t bigaddr = this->bigram_select(addr & 0xffff, stackrq);
+
+    //if (bigaddr > 0xffff) {
+    //    fprintf(stderr, "himem[%05x]<-%02x ", bigaddr, w8);
+    //}
+
     uint32_t phys = Memory::tobank(bigaddr);
 #ifndef NOSCRIPT
     if (this->onwrite) {
@@ -126,6 +134,8 @@ void Memory::write(uint32_t addr, uint8_t w8, bool stackrq)
 #ifndef NODEBUGGER
     if (debug_onwrite) debug_onwrite(bigaddr, w8);
 #endif
+    //if (bigaddr > 0xffff)
+    //    printf("write(%05x)->%02x\n", bigaddr, w8);
 }
 
 void Memory::init_from_vector(const vector<uint8_t> & from, uint32_t start_addr)

@@ -1,4 +1,4 @@
-		.org 100h
+;		.org 100h
 
 #define kvazbank 10h
 #define kvazport 10h
@@ -22,6 +22,7 @@
 ;Input: address - HL
 ;Output: data - DE
 kvazreadDE:
+                push h
 		xchg			;DE=address
 		lxi h,0
 		dad sp			;HL=old SP
@@ -36,10 +37,13 @@ kvazreadDE:
 		out kvazport
 		sphl			;SP=old SP
 		ei
+                pop h
 		ret
 		
 ;Input: address - HL, data - BC
 kvazwriteBC:
+                push h
+                push d
 		xchg			;DE=address
 		lxi h,0
 		dad sp			;HL=old SP
@@ -56,10 +60,23 @@ kvazwriteBC:
 		out kvazport
 		sphl			;SP=old SP
 		ei
+                pop d
+                pop h
 		ret
+                
+                ; [hl] <- de
+kvazwriteDE:
+                push b
+                mov b, d
+                mov c, e
+                call kvazwriteBC
+                pop b
+                ret
 
 ;Input: address - HL, data - C
 kvazwriteC:
+                push d
+                push h
 		xchg			;DE=address
 		lxi h,0
 		dad sp			;HL=old SP
@@ -77,6 +94,16 @@ kvazwriteC:
 		out kvazport
 		sphl			;SP=old SP
 		ei
+                pop h
+                pop d
 		ret
+
+                ; [hl] <- e
+kvazwriteE:
+                push b
+                mov c, e
+                call kvazwriteC
+                pop b
+                ret
 
 		.end

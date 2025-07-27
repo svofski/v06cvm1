@@ -10,28 +10,54 @@
         ;call putsi \ .db "pdp11 on 8080 svofski 2025", 10, 13, "$"
 
 ; load DE from REGISTER mem, addr in HL
-#define LOAD_DE_FROM_HL_REG mov e, m \ inx h \ mov d, m
+#define LOAD_DE_FROM_HL_REG           mov e, m \ inx h \ mov d, m
+#define STORE_BC_TO_HL_REG            mov m, c \ inx h \ mov m, b
+#define STORE_C_TO_HL_REG             mov m, c
+#define STORE_DE_TO_HL_REG            mov m, e \ inx h \ mov m, d
+#define STORE_DE_TO_HL_REG_REVERSE    mov m, d \ dcx h \ mov m, e
+#define STORE_BC_TO_HL_REG_REVERSE    mov m, b \ dcx h \ mov m, c
+#define LOAD_BC_FROM_HL_REG           mov c, m \ inx h \ mov b, m
+#define STORE_E_TO_HL_REG             mov m, e
+
+#ifdef WITH_KVAZ
+
+#define LOAD_DE_FROM_HL     call kvazreadDE \ inx h
+#define LOAD_BC_FROM_HL     push d \ call kvazreadDE \ mov b, d \ mov c, e \ pop d
+#define LOAD_E_FROM_HL      call kvazreadDE
+#define STORE_BC_TO_HL      call kvazwriteBC \ inx h
+#define STORE_C_TO_HL       call kvazwriteC
+#define STORE_A_TO_HL       mov c, a \ call kvazwriteC
+#define STORE_DE_TO_HL      call kvazwriteDE \ inx h
+#define STORE_E_TO_HL       call kvazwriteE
+
+#define STORE_BC_TO_HL_REVERSE  dcx h \ call kvazwriteBC
+#define STORE_DE_TO_HL_REVERSE  dcx h \ call kvazwriteDE
+
+; de = de + guest[hl], hl = hl + 1
+#define ADD_FROM_HL_TO_DE   push b \ mov b, d \ mov c, e \ call kvazreadDE \ xchg \ dad b \ xchg \ inx h \ pop b
+  
+#else
+
+; not kvaz
+
 ; load DE from GUEST mem, addr in HL
 #define LOAD_DE_FROM_HL     mov e, m \ inx h \ mov d, m
 #define LOAD_BC_FROM_HL     mov c, m \ inx h \ mov b, m
-#define LOAD_BC_FROM_HL_REG mov c, m \ inx h \ mov b, m
-; load E from GUEST mem, addr in HL
 #define LOAD_E_FROM_HL mov e, m
 #define STORE_BC_TO_HL mov m, c \ inx h \ mov m, b
-#define STORE_BC_TO_HL_REG mov m, c \ inx h \ mov m, b
-#define STORE_C_TO_HL_REG  mov m, c
+
 #define STORE_C_TO_HL mov m, c
 #define STORE_A_TO_HL mov m, a
 #define STORE_DE_TO_HL mov m, e \ inx h \ mov m, d
-#define STORE_DE_TO_HL_REG mov m, e \ inx h \ mov m, d
 #define STORE_E_TO_HL  mov m, e
-#define STORE_DE_TO_HL_REG_REVERSE mov m, d \ dcx h \ mov m, e
-#define STORE_BC_TO_HL_REG_REVERSE mov m, b \ dcx h \ mov m, c
 #define STORE_BC_TO_HL_REVERSE mov m, b \ dcx h \ mov m, c
 #define STORE_DE_TO_HL_REVERSE mov m, d \ dcx h \ mov m, e
 
 ; de = de + guest[hl], hl = hl + 1
 #define ADD_FROM_HL_TO_DE \ mov a, m \ add e \ mov e, a \ inx h \ mov a, m \ adc d \ mov d, a
+
+#endif
+
 
 #define ALIGN_WORD .org ( $ + 01H) & 0FFFEH ; align word
 #define ALIGN_16   .org ( $ + 0FH) & 0FFF0H ; align 16
@@ -63,6 +89,12 @@
         call setreg \ .dw r3 \ .dw $1234
         call assert_reg_equals \ .dw r3 \ .dw $1234
 
+        call putsi \ .db 10, 13, "SETMEM->", 10, 13, '$'
+        call setmem \.dw $1000 \ .dw $beef
+        call putsi \ .db 10, 13, "MEM_EQUALS->", 10, 13, '$'
+        call assert_mem_equals \ .dw $1000 \ .dw $beef
+        call putsi \ .db 10, 13, "FFFUUU->", 10, 13, '$'
+
         ; install rst1
         mvi a, $c3
         sta 8
@@ -75,6 +107,10 @@
 
         ;jmp test_mov_1
         ;jmp test_opcodes
+
+#ifdef TEST_ADDRMODES
+        jmp test_addrmodes
+#endif
 
 
 #ifdef TEST_OPCODES
@@ -110,11 +146,38 @@ hlt
 #endif
         
 test_mov_1:
+#ifdef WITH_KVAZ
+        ; copy the test to guest ram, same addresses
+        lxi h, test_mov1_pgm
+        mvi a, 64   ; 64 words ought to be enough for everybody
+
+tm1_memcpy:
+        push psw
+
+          mov c, m
+          inx h
+          mov b, m
+          dcx h
+          call kvazwriteBC
+
+          mvi m, 0
+          inx h
+          mvi m, 0
+          inx h
+
+        pop psw
+        dcr a
+        jnz tm1_memcpy
+        
+#endif
+
+
         call vm1_reset
         lxi h, test_mov1_pgm
         shld r7
 tm1_loop:
         call vm1_exec
+
         ; process interruptsies
         lxi h, intflg
         xra a
@@ -340,6 +403,7 @@ test_mov1_pgm:
         .dw 012701q ; mov #177777, r1
         .dw 177777q ; 
         .dw 010100q ; mov r1, r0
+        .dw 105001q ; clrb r1
         .dw 005001q ; clr r1
         .dw 012702q ; mov #160, r2
         .dw 000160q ; 
@@ -658,10 +722,13 @@ test_mov1_pgm:
         .dw 012706q       ;       mov #400, sp
         .dw 000400q
         .dw 012737q       ;       mov #handlur, @#4
-        .dw 001022q       
+        .dw 001030q       
         .dw 000004q       
-        .dw 106427q       ;       mtps #017  ; set NZVC = 017 = $0f
-        .dw 000017q
+        .dw 012737q       ;       mov #5, @#6   ; trap flags .Z.C
+        .dw 000005q       
+        .dw 000006q       
+        .dw 106427q       ;       mtps #012  ; set N.V.
+        .dw 000012q
         .dw 000100q       ;       jmp r0    ; trap to 4!
         .dw 000000q       ;       halt
         .dw 000002q       ;       rti
@@ -819,6 +886,23 @@ rst1_handler:
         ;pop psw         ; drop normal return addr
         ret
 
+setmem:
+#ifdef WITH_KVAZ 
+        pop h       ; return addr
+        mov e, m    
+        inx h
+        mov d, m
+        inx h       ; de <- guest addr
+
+        mov c, m
+        inx h
+        mov b, m    ; bc <- value
+        inx h
+        xchg
+        call kvazwriteBC
+        xchg
+        pchl
+#endif
         ; call setreg \ .dw r3 \ .dw $1234
         ; lxi h, $3412    ; r3 = 1234_big
         ; shld r3
@@ -935,6 +1019,40 @@ assert_trap_nl_exit:
         
         rst 0
 
+assert_mem_equals:
+#ifdef WITH_KVAZ
+        pop h
+        shld assert_adr
+        mov e, m \ inx h \ mov d, m \ inx h  ; de <- addr
+
+        push h
+          xchg \ call kvazreadDE               ; de <- guest[addr]
+        pop h
+        
+        mov a, e
+        cmp m
+        inx h
+        jnz assert_mem_trap
+        mov a, d
+        inx h
+        jnz assert_mem_trap
+        pchl
+        ; de = guest mem value under test
+assert_mem_trap:
+        push d
+          lhld assert_adr
+          dcx h \ dcx h \ dcx h \ call hl_to_hexstr
+          call putsi \ .db "assert at $"
+          lxi d, hexstr \ mvi c, 9 \ call 5
+        pop h 
+        call hl_to_hexstr
+        call putsi \ .db " act=$"
+        lxi d, hexstr \ mvi c, 9 \ call 5
+
+        jmp assert_reg_trap_exp
+
+
+#endif
 assert_reg_equals:
         pop h
         shld assert_adr
@@ -963,7 +1081,7 @@ assert_reg_trap:
         call hl_to_hexstr
         call putsi \ .db " act=$"
         lxi d, hexstr \ mvi c, 9 \ call 5
-
+assert_reg_trap_exp:
         lhld assert_adr
         inx h \ inx h
         mov e, m \ inx h \ mov d, m \ xchg
@@ -972,6 +1090,7 @@ assert_reg_trap:
         lxi d, hexstr \ mvi c, 9 \ call 5
 
         jmp assert_trap_nl_exit
+
 
         
 hl_to_hexstr:
@@ -1002,6 +1121,30 @@ hexstr:  .db 0, 0, 0, 0, "$"
         
         ; clear $1000..$2fff
 clearmem:
+#ifdef #WITH_KVAZ
+        di
+        lxi h, 0
+        dad sp
+        shld clearmem_sp
+        mvi a, kvazbank
+        out kvazport
+        lxi sp, 0
+        lxi h, $caca
+        lxi d, 0
+clearmem_loop:
+        push h
+        dcx d
+        mov a, d
+        ora e
+        jnz clearmem_loop
+
+        xra a
+        out kvazport
+
+clearmem_sp .equ $+1
+        lxi sp, 0
+        ei
+#endif
         lxi h, $1000
         lxi b, $3000
 clearmem_l0:        
@@ -1046,7 +1189,8 @@ vm1_exec:
         mvi h, vm1_opcode1_tbl >> 8
         pchl
 
-vm1_opcode: .dw 0
+vm1_opcode:     .dw 0
+vm1_addrmode:   .db 0
 
         .org ( $ + 0FFH) & 0FF00H ; align 256
 vm1_opcode1_tbl:
@@ -1397,6 +1541,7 @@ load_dd16:
         ; select addr mode
         mvi a, 070q
         ana l
+        sta vm1_addrmode
         ral \ ral ; addr mode * 32
         mov e, a  ; e = lsb load16[addr mode]
         mvi a, 007q
@@ -1417,6 +1562,7 @@ load_ss8:
 load_dd8:
         mvi a, 070q
         ana l
+        sta vm1_addrmode
         ral \ ral ; addr mode * 32
         mov e, a  ; e = lsb load16[addr mode]
         mvi a, 007q
@@ -1628,9 +1774,18 @@ ldbmode2:
         xchg
         LOAD_DE_FROM_HL_REG ; load register
 
+#ifdef WITH_KVAZ
+        push h
+        push d
+        xchg              ; hl <- R
+        LOAD_DE_FROM_HL   ; de <- (R)
+        mov b, e
+        pop d
+        pop h
+#else
         ldax d  ; a = (R)
         mov b, a
-        
+#endif    
         ; R += 1, but R6 and R7 += 2
         inx d
         ; r6, r7 the increment is always 2
@@ -1782,7 +1937,7 @@ stwmode6:
         lhld r7
         ADD_FROM_HL_TO_DE
         xchg                  ; de = r7 + 1
-        STORE_BC_TO_HL
+        STORE_BC_TO_HL        ; *ea = bc
         inx d                 ; r7 += 2
         xchg
         shld r7
@@ -1819,7 +1974,7 @@ stbmode0_with_sex:
         .org store8 + (32*1)
 stbmode1: ; *reg16[dst] = BC
         xchg
-        mov m, c
+        STORE_C_TO_HL
         ret
 
         .org store8 + (32*2)
@@ -1910,14 +2065,64 @@ opc_scond:
         mov m, a
         ret
 
+_store_bc_hl_addrmode:
+        lda vm1_addrmode
+        ora a
+        jz _sbcha_reg
+        STORE_BC_TO_HL
+        ret
+_sbcha_reg:
+        STORE_BC_TO_HL_REG
+        ret
+
+_store_c_hl_addrmode:
+        lda vm1_addrmode
+        ora a
+        jz scha_reg
+        STORE_C_TO_HL
+        ret
+scha_reg:
+        STORE_C_TO_HL_REG
+        ret
+
+_store_de_hl_addrmode:
+        lda vm1_addrmode
+        ora a
+        jz sdeha_reg
+        STORE_DE_TO_HL
+        ret
+sdeha_reg:
+        STORE_DE_TO_HL_REG
+        ret
+
+_store_e_hl_addrmode:
+        lda vm1_addrmode
+        ora a
+        jz seha_reg
+        STORE_E_TO_HL
+        ret
+seha_reg:
+        STORE_E_TO_HL_REG
+        ret
+
+
 opc_swab: 
         xchg
         call load_dd16   ; load DD -> de
-        dcx h            ; hl -> op
+        dcx h            ; hl -> op, vm1_addrmode selects addr space
         mov c, d
         mov b, e
-        STORE_BC_TO_HL
 
+        call _store_bc_hl_addrmode
+
+;        lda vm1_addrmode
+;        ora a
+;        jz swab_reg
+;        STORE_BC_TO_HL
+;        jmp swab_aluf
+;swab_reg:
+;        STORE_BC_TO_HL_REG
+swab_aluf:
         ; aluf NZ, V=0, C = 0
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
@@ -2159,7 +2364,8 @@ opc_clr:
         call load_dd16
         dcx h
         lxi b, 0
-        STORE_BC_TO_HL
+        ;STORE_BC_TO_HL
+        call _store_bc_hl_addrmode
 clr_aluf_and_ret:
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
@@ -2167,6 +2373,14 @@ clr_aluf_and_ret:
         ori PSW_Z
         mov m, a
         ret
+
+opc_clrb:
+        xchg
+        call load_dd8
+        mvi c, 0
+        ;STORE_C_TO_HL
+        call _store_c_hl_addrmode
+        jmp clr_aluf_and_ret
 
 opc_com:   
         xchg
@@ -2178,7 +2392,8 @@ opc_com:
         mov a, e
         cma
         mov c, a
-        STORE_BC_TO_HL
+        ;STORE_BC_TO_HL
+        call _store_bc_hl_addrmode
 
         ; aluf NZ, V=0, C=1
         lxi h, rpsw
@@ -2201,7 +2416,37 @@ com_nosetz:
         ora m
         mov m, a
 com_nosetn:
+        ret
 
+opc_comb:
+        xchg
+        call load_dd8
+        mov a, e
+        cma
+        ;STORE_A_TO_HL
+        mov c, a
+        call _store_c_hl_addrmode
+        ; aluf NZ, V=0, C=1
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        ori PSW_C
+        mov m, a
+
+        mov a, c
+        ora a
+        jnz comb_nosetz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+comb_nosetz:
+        mov a, c
+        add a
+        jnz comb_nosetn
+        mvi a, PSW_N
+        ora m
+        mov m, a
+comb_nosetn:
         ret
 
 opc_inc:   
@@ -2209,7 +2454,8 @@ opc_inc:
         call load_dd16
         dcx h
         inx d
-        STORE_DE_TO_HL
+        ;STORE_DE_TO_HL
+        call _store_de_hl_addrmode
 
         ; aluf NZV
         lxi h, rpsw
@@ -2248,7 +2494,8 @@ opc_dec:
         call load_dd16
         dcx h
         dcx d
-        STORE_DE_TO_HL
+        ;STORE_DE_TO_HL
+        call _store_de_hl_addrmode
 
         ; aluf NZV
         lxi h, rpsw
@@ -2293,7 +2540,8 @@ opc_neg:
         mov e, a
 
         inx d
-        STORE_DE_TO_HL
+        ;STORE_DE_TO_HL
+        call _store_de_hl_addrmode
 
         ; aluf NZ, V = 0x8000, C = !Z
         lxi h, rpsw
@@ -2355,7 +2603,8 @@ opc_ror:
         mov a, e
         rar
         mov e, a
-        STORE_DE_TO_HL
+        ;STORE_DE_TO_HL
+        call _store_de_hl_addrmode
 
         ; aluf NZVC
 ror_aluf:
@@ -2391,7 +2640,8 @@ opc_rol:
         mov l, a
 
         xchg
-        STORE_DE_TO_HL
+        ;STORE_DE_TO_HL
+        call _store_de_hl_addrmode
 rol_aluf:
         ; aluf NZVC
         lxi h, rpsw
@@ -2454,7 +2704,8 @@ opc_asr:
         mov a, d    ; put sign bit in place
         ora b
         mov d, a
-        STORE_DE_TO_HL
+        ;STORE_DE_TO_HL
+        call _store_de_hl_addrmode
         jmp ror_aluf
 
 opc_asl:   
@@ -2467,7 +2718,8 @@ opc_asl:
         dad h
 
         xchg
-        STORE_DE_TO_HL
+        ;STORE_DE_TO_HL
+        call _store_de_hl_addrmode
         jmp rol_aluf
 
 opc_rorb:
@@ -2480,7 +2732,10 @@ opc_rorb:
         mov a, e        ; e keeps the original
         rar
         mov d, a        ; d is rotated, for flags
-        STORE_A_TO_HL
+
+        ;STORE_A_TO_HL
+        mov c, a
+        call _store_c_hl_addrmode
         
         ; aluf NZVC
 rorb_aluf:
@@ -2507,7 +2762,10 @@ opc_rolb:
         mov a, e        ; keep the original in e
         ral
         mov d, a        ; d is rotated value, for flags
-        STORE_A_TO_HL
+
+        ;STORE_A_TO_HL
+        mov c, a
+        call _store_c_hl_addrmode
 
         ; aluf NZVC
 rolb_aluf:
@@ -2562,7 +2820,10 @@ opc_asrb:
         rar
         ora d     ; asr a
         mov d, a  ; d is rotated, for flags
-        STORE_A_TO_HL
+        ;STORE_A_TO_HL
+        mov c, a
+        call _store_c_hl_addrmode
+
         jmp rorb_aluf
 
 opc_aslb:
@@ -2571,7 +2832,10 @@ opc_aslb:
         mov a, e
         add a
         mov d, a ; for flags
-        STORE_A_TO_HL
+        ;STORE_A_TO_HL
+        mov c, a
+        call _store_c_hl_addrmode
+
         jmp rolb_aluf
 
 opc_mark:   
@@ -2684,7 +2948,10 @@ opc_bic:
         cma
         ana d
         mov b, a          ; bc <- dst & ~src
-        STORE_BC_TO_HL_REVERSE
+
+        ;STORE_BC_TO_HL_REVERSE
+        dcx h
+        call _store_bc_hl_addrmode
         jmp bit_aluf
 
 opc_bis:
@@ -2702,7 +2969,10 @@ opc_bis:
         mov a, b
         ora d
         mov b, a
-        STORE_BC_TO_HL_REVERSE
+
+        ;STORE_BC_TO_HL_REVERSE
+        dcx h
+        call _store_bc_hl_addrmode
         jmp bit_aluf
 
 opc_bitb:
@@ -2747,7 +3017,8 @@ opc_bicb:
         cma
         ana e
         mov c, a      ; c <- dst & ~src
-        STORE_C_TO_HL
+        ;STORE_C_TO_HL
+        call _store_c_hl_addrmode
         jmp bitb_aluf
 
 opc_bisb:
@@ -2761,7 +3032,8 @@ opc_bisb:
         mov a, c
         ora e
         mov c, a      ; c <- dst & ~src
-        STORE_C_TO_HL
+        ;STORE_C_TO_HL
+        call _store_c_hl_addrmode
         jmp bitb_aluf
 
 opc_add:
@@ -3066,57 +3338,24 @@ opx_interrupt:
           shld r6                             ; sp -= 2 (store)
         pop h
         ; load vector
-        mov e, m
-        inx h
-        mov d, m
+        LOAD_DE_FROM_HL
         xchg
         shld r7
-        inx h \ inx h
-        mov l, m
+        xchg
+        inx h
+        LOAD_DE_FROM_HL
+        mov l, e
         mvi h, 0
-        shld rpsw                             ;  set psw from vector
+        shld rpsw
         ret
 
-opc_clrb:
-        xchg
-        call load_dd8
-        mvi c, 0
-        STORE_C_TO_HL
-        jmp clr_aluf_and_ret
-opc_comb:
-        xchg
-        call load_dd8
-        mov a, e
-        cma
-        STORE_A_TO_HL
-        ; aluf NZ, V=0, C=1
-        lxi h, rpsw
-        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
-        ana m
-        ori PSW_C
-        mov m, a
-
-        mov a, e
-        ora a
-        jnz comb_nosetz
-        mvi a, PSW_Z
-        ora m
-        mov m, a
-comb_nosetz:
-        mov a, e
-        add a
-        jnz comb_nosetn
-        mvi a, PSW_N
-        ora m
-        mov m, a
-comb_nosetn:
-        ret
 
 opc_incb:
         xchg
         call load_dd8
         inr e
-        STORE_E_TO_HL
+        ;STORE_E_TO_HL
+        call _store_e_hl_addrmode
 
         ; aluf NZV
         lxi h, rpsw
@@ -3149,7 +3388,8 @@ opc_decb:
         xchg
         call load_dd8
         dcr e
-        STORE_E_TO_HL
+        ;STORE_E_TO_HL
+        call _store_e_hl_addrmode
 
         ; aluf NZV
         lxi h, rpsw
@@ -3186,7 +3426,8 @@ opc_negb:
         mov a, e
         cma
         inr a
-        STORE_A_TO_HL
+        mov e, a
+        call _store_e_hl_addrmode
 
         ; aluf NZVC
         lxi h, rpsw
@@ -3314,6 +3555,9 @@ movb_setaluf_and_store:
 
 
 #ifdef TEST_ADDRMODES
+
+test_addrmodes:
+
         ; MODE 0 WORD LOAD: DE=R3
 test_loadw_0:        
         call putsi \ .db 10, 13, "MODE 0 WORD LOAD: DE=R3 $"
@@ -3335,7 +3579,7 @@ test_loadw_1:
 test_loadw_1_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1236
-        call setreg \ .dw $1236 \ .dw $1234
+        call setmem \ .dw $1236 \ .dw $1234
 
         lxi d, 0
         mvi l, 13q
@@ -3354,7 +3598,7 @@ test_loadw_2:
 test_loadw_2_nomsg:        
         call clearmem
         call setreg \ .dw r3 \ .dw $1236
-        call setreg \ .dw $1236 \ .dw $beef
+        call setmem \ .dw $1236 \ .dw $beef
 
         lxi d, 0
         mvi l, 23q
@@ -3375,8 +3619,8 @@ test_loadw_3:
         call putsi \ .db 10, 13, "MODE 3 WORD LOAD: DE=@(R3)+ $"
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
-        call setreg \ .dw $1234 \ .dw $1236
-        call setreg \ .dw $1236 \ .dw $beef
+        call setmem \ .dw $1234 \ .dw $1236
+        call setmem \ .dw $1236 \ .dw $beef
         
         lxi h, 003333q          ; load @(r3)+
         call load_dd16
@@ -3394,7 +3638,7 @@ test_loadw_4:
         call putsi \ .db 10, 13, "MODE 4 WORD LOAD: DE=-(R3) $" 
         call clearmem
         call setreg \ .dw r3 \ .dw $1236
-        call setreg \ .dw $1234 \ .dw $beef
+        call setmem \ .dw $1234 \ .dw $beef
         
         lxi h, 004343q
         call load_dd16
@@ -3412,8 +3656,8 @@ test_loadw_5:
         call putsi \ .db 10, 13, "MODE 5 WORD LOAD DE=@-(R3) $"
 test_loadw_5_nomsg:
         call clearmem
-        call setreg \ .dw $1238 \ .dw $beef
-        call setreg \ .dw $1236 \ .dw $1238
+        call setmem \ .dw $1238 \ .dw $beef
+        call setmem \ .dw $1236 \ .dw $1238
         call setreg \ .dw r3 \ .dw $1238 ; r3 = 1238, --r3: 1236, *r3 = *1236 = 1238, *1238 = beef
 
         lxi h, 005353q
@@ -3428,8 +3672,8 @@ test_loadw_6_nomsg:
         call clearmem
         call setreg \ .dw r3, $1234
         call setreg \ .dw r7, $1210
-        call setreg \ .dw $1210, $0102 ; [1210] = 0102_big
-        call setreg \ .dw 0102h+01234h, $beef
+        call setmem \ .dw $1210, $0102 ; [1210] = 0102_big
+        call setmem \ .dw 0102h+01234h, $beef
 
         lxi h, 006363q
         call load_dd16
@@ -3449,9 +3693,9 @@ test_loadw_7_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
         call setreg \ .dw r7 \ .dw $1210
-        call setreg \ .dw $1210 \ .dw $0102 ; [1210] = 0102_big
-        call setreg \ .dw 0102h+01234h \ .dw $1236
-        call setreg \ .dw $1236 \ .dw $beef
+        call setmem \ .dw $1210 \ .dw $0102 ; [1210] = 0102_big
+        call setmem \ .dw 0102h+01234h \ .dw $1236
+        call setmem \ .dw $1236 \ .dw $beef
         
         lxi h, 007373q
         call load_dd16
@@ -3489,7 +3733,7 @@ test_loadb_1:
 test_loadb_1_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1236
-        call setreg \ .dw $1236 \ .dw $1234
+        call setmem \ .dw $1236 \ .dw $1234
 
         lxi d, 0
         mvi l, 13q
@@ -3519,7 +3763,7 @@ test_loadb_2:
         call putsi \ .db 10, 13, "MODE 2 BYTE LOAD: E=(R3)+ $"
 test_loadb_2_nomsg:        
         call clearmem
-        call setreg \ .dw $1236 \ .dw $beef
+        call setmem \ .dw $1236 \ .dw $beef
 
         ; retrieve as destination
         call setreg \ .dw r3 \ .dw $1236
@@ -3554,9 +3798,9 @@ test_loadb_3:
         call putsi \ .db 10, 13, "MODE 3 BYTE LOAD: E=@(R3)+ $"
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
-        call setreg \ .dw $1234 \ .dw $1238     ; byte ptr -> be
-        call setreg \ .dw $1236 \ .dw $1239     ; byte ptr -> ef
-        call setreg \ .dw $1238 \ .dw $beef
+        call setmem \ .dw $1234 \ .dw $1238     ; byte ptr -> be
+        call setmem \ .dw $1236 \ .dw $1239     ; byte ptr -> ef
+        call setmem \ .dw $1238 \ .dw $beef
         
         ; as destination
         lxi h, 003333q          ; load @(r3)+
@@ -3586,7 +3830,7 @@ test_loadb_4:
         call putsi \ .db 10, 13, "MODE 4 BYTE LOAD: E=-(R3) $" 
         call clearmem
         call setreg \ .dw r3 \ .dw $1236
-        call setreg \ .dw $1234 \ .dw $beef
+        call setmem \ .dw $1234 \ .dw $beef
         
         lxi h, 004343q
         call load_dd8
@@ -3614,9 +3858,9 @@ test_loadb_5:
         call putsi \ .db 10, 13, "MODE 5 BYTE LOAD E=@-(R3) $"
 test_loadb_5_nomsg:
         call clearmem
-        call setreg \ .dw $1238 \ .dw $beef     ; 1238: be 1239: ef
-        call setreg \ .dw $1236 \ .dw $1238     ; 1236 -> 1238: be
-        call setreg \ .dw $1234 \ .dw $1239     ; 1234 -> 1239: ef
+        call setmem \ .dw $1238 \ .dw $beef     ; 1238: be 1239: ef
+        call setmem \ .dw $1236 \ .dw $1238     ; 1236 -> 1238: be
+        call setmem \ .dw $1234 \ .dw $1239     ; 1234 -> 1239: ef
 
         ; as dst
         call setreg \ .dw r3 \ .dw $1238        ; r3 = 1238
@@ -3649,9 +3893,9 @@ test_loadb_6_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
         call setreg \ .dw r7 \ .dw $1210
-        call setreg \ .dw $1210 \ .dw $0102 ; -> be
-        call setreg \ .dw $1212 \ .dw $0103 ; -> ef
-        call setreg \ .dw 0102h+01234h \ .dw $beef
+        call setmem \ .dw $1210 \ .dw $0102 ; -> be
+        call setmem \ .dw $1212 \ .dw $0103 ; -> ef
+        call setmem \ .dw 0102h+01234h \ .dw $beef
 
         ; as dst
         lxi h, 006363q
@@ -3685,11 +3929,11 @@ test_loadb_7_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
         call setreg \ .dw r7 \ .dw $1210
-        call setreg \ .dw $1210 \ .dw $0102             ; offset 1
-        call setreg \ .dw $1212 \ .dw $0105             ; offset 2
-        call setreg \ .dw 0102h+01234h \ .dw $1236      ; -> be
-        call setreg \ .dw 0105h+01234h \ .dw $1237      ; -> ef
-        call setreg \ .dw $1236 \ .dw $beef
+        call setmem \ .dw $1210 \ .dw $0102             ; offset 1
+        call setmem \ .dw $1212 \ .dw $0105             ; offset 2
+        call setmem \ .dw 0102h+01234h \ .dw $1236      ; -> be
+        call setmem \ .dw 0105h+01234h \ .dw $1237      ; -> ef
+        call setmem \ .dw $1236 \ .dw $beef
         
         ; as dst
         lxi h, 007373q
@@ -3744,159 +3988,159 @@ test_storew_1:
         lxi b, $beef
         mvi l, 13q
         call store_dd16
-        call assert_reg_equals \ .dw $1000 \ .dw $beef
+        call assert_mem_equals \ .dw $1000 \ .dw $beef
 
 test_storeb_1:
         call putsi \ .db 10, 13, "MODE 1 BYTE STORE: (R3)=C $"
         call clearmem
-        call setreg \ .dw $1000 \ .dw $caca
+        call setmem \ .dw $1000 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1000
         lxi b, $beef
         mvi l, 13q
         call store_dd8
-        call assert_reg_equals \ .dw $1000 \ .dw $caef
+        call assert_mem_equals \ .dw $1000 \ .dw $caef
 
 test_storew_2:
         call putsi \ .db 10, 13, "MODE 2 WORD STORE: (R3)+=BC $"
 test_storew_2_nomsg:
         call clearmem
-        call setreg \ .dw $1000 \ .dw $caca
+        call setmem \ .dw $1000 \ .dw $b0be
         call setreg \ .dw r3 \ .dw $1000
         lxi b, $beef
         mvi l, 23q
         call store_dd16
-        call assert_reg_equals \ .dw $1000 \ .dw $beef
+        call assert_mem_equals \ .dw $1000 \ .dw $beef
         call assert_reg_equals \ .dw r3 \ .dw $1002
 test_storeb_2:
         call putsi \ .db 10, 13, "MODE 2 BYTE STORE: (R3)+=C $"
         call clearmem
-        call setreg \ .dw $1000 \ .dw $caca
+        call setmem \ .dw $1000 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1000
         lxi b, $beef
         mvi l, 23q
         call store_dd8
-        call assert_reg_equals \ .dw $1000 \ .dw $caef
+        call assert_mem_equals \ .dw $1000 \ .dw $caef
         call assert_reg_equals \ .dw r3 \ .dw $1001
 
 test_storew_3:
         call putsi \ .db 10, 13, "MODE 3 WORD STORE: @(R3)+=BC $"
         call clearmem
-        call setreg \ .dw $1000 \ .dw $1004 ; 1000->1004=caca
-        call setreg \ .dw $1004 \ .dw $caca
+        call setmem \ .dw $1000 \ .dw $1004 ; 1000->1004=caca
+        call setmem \ .dw $1004 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1000
         lxi b, $beef
         mvi l, 33q
         call store_dd16
-        call assert_reg_equals \ .dw $1004 \ .dw $beef
+        call assert_mem_equals \ .dw $1004 \ .dw $beef
         call assert_reg_equals \ .dw r3 \ .dw $1002
 
 test_storeb_3:
         call putsi \ .db 10, 13, "MODE 3 BYTE STORE: @(R3)+=C $"
         call clearmem
-        call setreg \ .dw $1000 \ .dw $1004 ; 1000->1004=caca
-        call setreg \ .dw $1004 \ .dw $caca
+        call setmem \ .dw $1000 \ .dw $1004 ; 1000->1004=caca
+        call setmem \ .dw $1004 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1000
         lxi b, $beef
         mvi l, 33q
         call store_dd8
-        call assert_reg_equals \ .dw $1004 \ .dw $caef
+        call assert_mem_equals \ .dw $1004 \ .dw $caef
         call assert_reg_equals \ .dw r3 \ .dw $1002
 
 test_storew_4:
         call putsi \ .db 10, 13, "MODE 4 WORD STORE: -(R3)=BC $" 
         call clearmem
-        call setreg \ .dw $1000 \ .dw $caca
+        call setmem \ .dw $1000 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1002
         lxi b, $beef
         mvi l, 43q
         call store_dd16
-        call assert_reg_equals \ .dw $1000 \ .dw $beef
+        call assert_mem_equals \ .dw $1000 \ .dw $beef
         call assert_reg_equals \ .dw r3 \ .dw $1000
 test_storeb_4:
         call putsi \ .db 10, 13, "MODE 4 BYTE STORE: -(R3)=C $" 
         call clearmem
-        call setreg \ .dw $1000 \ .dw $caca
+        call setmem \ .dw $1000 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1001
         lxi b, $beef
         mvi l, 43q
         call store_dd8
-        call assert_reg_equals \ .dw $1000 \ .dw $caef
+        call assert_mem_equals \ .dw $1000 \ .dw $caef
         call assert_reg_equals \ .dw r3 \ .dw $1000
 
 test_storew_5:
         call putsi \ .db 10, 13, "MODE 5 WORD STORE @-(R3)=BC $"
 test_storew_5_nomsg:
         call clearmem
-        call setreg \ .dw $1002 \ .dw $1000
-        call setreg \ .dw $1000 \ .dw $caca
+        call setmem \ .dw $1002 \ .dw $1000
+        call setmem \ .dw $1000 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1004
         lxi b, $beef
         mvi l, 53q
         call store_dd16
-        call assert_reg_equals \ .dw $1000 \ .dw $beef
+        call assert_mem_equals \ .dw $1000 \ .dw $beef
         call assert_reg_equals \ .dw r3 \ .dw $1002
 test_storeb_5:
         call putsi \ .db 10, 13, "MODE 5 BYTE STORE @-(R3)=C $"
         call clearmem
-        call setreg \ .dw $1002 \ .dw $1000
-        call setreg \ .dw $1000 \ .dw $caca
+        call setmem \ .dw $1002 \ .dw $1000
+        call setmem \ .dw $1000 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1004
         lxi b, $beef
         mvi l, 53q
         call store_dd8
-        call assert_reg_equals \ .dw $1000 \ .dw $caef
+        call assert_mem_equals \ .dw $1000 \ .dw $caef
         call assert_reg_equals \ .dw r3 \ .dw $1002
 
 test_storew_6:
         call putsi \ .db 10, 13, "MODE 6 WORD STORE X(R3)=BC $"
 test_storew_6_nomsg:
         call clearmem
-        call setreg \ .dw $1000 \ .dw $0102  ; offset
+        call setmem \ .dw $1000 \ .dw $0102  ; offset
         call setreg \ .dw r7 \ .dw $1000     ; r7 points to offset at 1000
-        call setreg \ .dw $1102 \ .dw $caca  ; write here
+        call setmem \ .dw $1102 \ .dw $caca  ; write here
         call setreg \ .dw r3 \ .dw $1000     ; base addr
         lxi b, $beef
         mvi l, 63q
         call store_dd16
-        call assert_reg_equals \ .dw $1102 \ .dw $beef
+        call assert_mem_equals \ .dw $1102 \ .dw $beef
         call assert_reg_equals \ .dw r7 \ .dw $1002
 test_storeb_6:
         call putsi \ .db 10, 13, "MODE 6 BYTE STORE X(R3)=C $"
         call clearmem
-        call setreg \ .dw $1000 \ .dw $0102  ; offset
+        call setmem \ .dw $1000 \ .dw $0102  ; offset
         call setreg \ .dw r7 \ .dw $1000     ; r7 points to offset at 1000
-        call setreg \ .dw $1102 \ .dw $caca  ; write here
+        call setmem \ .dw $1102 \ .dw $caca  ; write here
         call setreg \ .dw r3 \ .dw $1000     ; base addr
         lxi b, $beef
         mvi l, 63q
         call store_dd8
-        call assert_reg_equals \ .dw $1102 \ .dw $caef
+        call assert_mem_equals \ .dw $1102 \ .dw $caef
         call assert_reg_equals \ .dw r7 \ .dw $1002
 
 test_storew_7:
         call putsi \ .db 10, 13, "MODE 7 WORD STORE @X(R3)=BC $"
-        call setreg \ .dw $1000 \ .dw $0102  ; offset
+        call setmem \ .dw $1000 \ .dw $0102  ; offset
         call setreg \ .dw r7 \ .dw $1000     ; r7 + $102 -> addr
-        call setreg \ .dw $1102 \ .dw $1104  ; pointer to caca
-        call setreg \ .dw $1104 \ .dw $caca
+        call setmem \ .dw $1102 \ .dw $1104  ; pointer to caca
+        call setmem \ .dw $1104 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1000     ; base addr
         lxi b, $beef
         mvi l, 73q
         call store_dd16
-        call assert_reg_equals \ .dw $1104 \ .dw $beef
+        call assert_mem_equals \ .dw $1104 \ .dw $beef
         call assert_reg_equals \ .dw r7 \ .dw $1002
 
 test_storeb_7:
         call putsi \ .db 10, 13, "MODE 7 BYTE STORE @X(R3)=C $"
-        call setreg \ .dw $1000 \ .dw $0102  ; offset
+        call setmem \ .dw $1000 \ .dw $0102  ; offset
         call setreg \ .dw r7 \ .dw $1000     ; r7 + $102 -> addr
-        call setreg \ .dw $1102 \ .dw $1104  ; pointer to caca
-        call setreg \ .dw $1104 \ .dw $caca
+        call setmem \ .dw $1102 \ .dw $1104  ; pointer to caca
+        call setmem \ .dw $1104 \ .dw $caca
         call setreg \ .dw r3 \ .dw $1000     ; base addr
         lxi b, $beef
         mvi l, 73q
         call store_dd8
-        call assert_reg_equals \ .dw $1104 \ .dw $caef
+        call assert_mem_equals \ .dw $1104 \ .dw $caef
         call assert_reg_equals \ .dw r7 \ .dw $1002
 
         ; 
@@ -3910,5 +4154,6 @@ test_storeb_7:
 
 #endif ; ADDRMODES
 
+        .include "kvzproc2.asm"
 
 .end

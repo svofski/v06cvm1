@@ -5,13 +5,17 @@ set -e
 #TESTS="ADDRMODES MOV MOVB MOVB2 FLAGSR CLR COM INC INCB NEG BR BRCOND SOB JMP JSR ROR RORB ADD SUB CMP CMPB MARK SXT BIT BITB RTI"
 TESTS="RTI"
 
-./TASM.EXE -b -85 vm1.asm vm1.com |& tee tasm.log
+export WITH_KVAZ=-DWITH_KVAZ=1
+
+./TASM.EXE -b -85 $WITH_KVAZ vm1.asm vm1.com |& tee tasm.log
 awk -f opcodes.awk vm1.lst > testbench/vm1_opcodes.h
-make -C testbench
+
+set -x
+make WITH_KVAZ=$WITH_KVAZ -C testbench 
 
 for test in $TESTS ; do
   echo -e "\e[7mTEST: $test\e[0m"
-  ./TASM.EXE -b -85 -DTEST_$test=1 vm1.asm vm1.com >> tasm.log 2>&1
+  ./TASM.EXE -b -85 -DTEST_$test=1 $WITH_KVAZ vm1.asm vm1.com >> tasm.log 2>&1
   testbench/i8080_test
 done
 

@@ -34,11 +34,11 @@
 #ifndef I8080_HAL_H
 #define I8080_HAL_H
 
-extern int i8080_hal_memory_read_word(int addr);
-extern void i8080_hal_memory_write_word(int addr, int word);
+extern int i8080_hal_memory_read_word(int addr, bool stack = false);
+extern void i8080_hal_memory_write_word(int addr, int word, bool stack = false);
 
-extern int i8080_hal_memory_read_byte(int addr);
-extern void i8080_hal_memory_write_byte(int addr, int byte);
+extern int i8080_hal_memory_read_byte(int addr, bool stack = false);
+extern void i8080_hal_memory_write_byte(int addr, int byte, bool stack = false);
 
 extern int i8080_hal_io_input(int port);
 extern void i8080_hal_io_output(int port, int value);

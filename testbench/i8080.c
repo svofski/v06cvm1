@@ -35,10 +35,13 @@
 #include "i8080_hal.h"
 
 #define RD_BYTE(addr) i8080_hal_memory_read_byte(addr)
-#define RD_WORD(addr) i8080_hal_memory_read_word(addr)
+#define RD_OPCODE(addr) i8080_hal_memory_read_byte(addr, true)
+#define RD_WORD(addr) i8080_hal_memory_read_word(addr,false)
+#define RD_STACK(addr) i8080_hal_memory_read_word(addr, true)
 
 #define WR_BYTE(addr, value) i8080_hal_memory_write_byte(addr, value)
-#define WR_WORD(addr, value) i8080_hal_memory_write_word(addr, value)
+#define WR_WORD(addr,value) i8080_hal_memory_write_word(addr,value,false)
+#define WR_STACK(addr,value) i8080_hal_memory_write_word(addr,value,true)
 
 typedef unsigned char           uns8;
 typedef unsigned short          uns16;
@@ -117,8 +120,8 @@ struct i8080 {
 #define TST(flag)       (flag)
 #define CPL(flag)       (flag = !flag)
 
-#define POP(reg)        { (reg) = RD_WORD(SP); SP += 2; }
-#define PUSH(reg)       { SP -= 2; WR_WORD(SP, (reg)); }
+#define POP(reg)        { (reg) = RD_STACK(SP); SP += 2; }
+#define PUSH(reg)       { SP -= 2; WR_STACK(SP, (reg)); }
 #define RET()           { POP(PC); }
 #define STC()           { SET(C_FLAG); }
 #define CMC()           { CPL(C_FLAG); }
@@ -1516,8 +1519,8 @@ static int i8080_execute(int opcode) {
 
         case 0xE3:            /* xthl */
             cpu_cycles = 18;
-            work16 = RD_WORD(SP);
-            WR_WORD(SP, HL);
+            work16 = RD_STACK(SP);
+            WR_STACK(SP, HL);
             HL = work16;
             break;
 
