@@ -734,12 +734,44 @@ test_mov1_pgm:
         .dw 000002q       ;       rti
 #endif
 
+#ifdef TEST_TRAP
+        .dw 012706q       ;       mov #400, sp
+        .dw 000400q
+        .dw 012737q       ;       mov #handlur, @#34    ; tarp
+        .dw 001026q       
+        .dw 000034q       
+        .dw 012737q       ;       mov #handlur, @#30    ; emt
+        .dw 001026q       
+        .dw 000030q       
+        .dw 104400q       ;       trap !
+        .dw 104000q       ;       emt !
+        .dw 000000q
+        .dw 000002q       ;       rti
+#endif
+
+#ifdef TEST_ADC
+        .dw 000257q       ;       ccc
+        .dw 005500q       ;       adc r0
+        .dw 000261q       ;       sec
+        .dw 005500q       ;       adc r0
+        .dw 012700q       ;       mov #77777, r0
+        .dw 077777q       ;       
+        .dw 000261q       ;       sec
+        .dw 005500q       ;       adc r0
+        .dw 012700q       ;       mov #-1, r0
+        .dw 177777q       ;       
+        .dw 000261q       ;       sec
+        .dw 005500q       ;       adc r0
+#endif
+
         ; missing tests
-        ; halt, wait, rti, bpt, iot, reset, rtt
         ; adc, sbc, tst
         ; adcb, sbcb, tstb
+        ;
+        ; rtt not impl
+        ; halt, wait, rti, bpt, iot, reset, rtt
         ; mfps 1067dd, mtps 1064ss
-        ; emt, trap
+        ; emt, trap, rti -- kinda sorta ok
 
         .dw 000000q       ; halt
         .dw 177777q       ; TERMINAT *
@@ -804,9 +836,9 @@ test_opcode_table:
         .dw 005200q ; INC  0177700        
         .dw 005300q ; DEC  0177700         
         .dw 005400q ; NEG  0177700         
-        .dw 005500q ; ADC 
-        .dw 005600q ; SBC 
-        .dw 005700q ; TST 
+        .dw 005500q ; ADC  0177700
+        .dw 005600q ; SBC  0177700
+        .dw 005700q ; TST  0177700
         .dw 006000q ; ROR 0177700
         .dw 006100q ; ROL 0177700
         .dw 006200q ; ASR 0177700         
@@ -1171,6 +1203,10 @@ vm1_reset_l1:
         mov m, a \ inx h
         dcr c
         jnz vm1_reset_l1
+
+        lxi h, 0340q
+        shld rpsw
+        
         ret
 
         
@@ -2147,16 +2183,6 @@ swab_aluf:
 
         ret
         
-opc_halt: 
-        rst 1
-opc_wait: 
-        rst 1
-opc_bpt:  
-        rst 1
-opc_iot:  
-        rst 1
-opc_reset:  
-        rst 1
 opc_rtt:  
         rst 1
 opc_rts:  
@@ -2579,9 +2605,96 @@ opc_neg:
         ret
 
 opc_adc:   
-        rst 1
+        ; 0055dd adc dd: dst <- dst + c
+        xchg
+        call load_dd16
+        dcx h           ; hl = &dst, de = dst
+
+        mvi b, 0
+        lda rpsw
+        rar
+        jnc adc_no_cin
+
+        inx d           ; hl = dst + cin (1)
+        call _store_de_hl_addrmode
+
+        xra a
+        ora e
+        jnz adc_no_cin  ; result lsb != 0, definitely nothing special
+        mvi a, $80
+        cmp d
+        jz adc_v
+        ; cout if dst == 0
+        xra a
+        ora d
+        jnz adc_no_cin ; not 0, fekov
+        mvi b, PSW_C
+        jmp adc_no_cin
+adc_v:  mvi b, PSW_V
+adc_no_cin:
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        ora b
+        mov m, a
+_adc_zn:        
+        mov a, d
+        ora e
+        mvi a, PSW_Z
+        jz $+4
+        xra a
+        ora m
+        mov m, a
+
+        xra a
+        ora b
+        mvi a, PSW_N
+        jm $+4
+        xra a
+        ora m
+        mov m, a
+        ret
+
 opc_sbc:   
-        rst 1
+        xchg
+        call load_dd16
+        dcx h             ; hl = &dst, de = dst
+
+        mvi b, 0
+
+        lda rpsw
+        rar
+        jnc sbc_no_cin
+
+        ; dst = dst - 1, if dst == 0, cout = 1
+        mov a, d
+        ora e
+        jnz $+5
+        mvi b, PSW_C
+
+        dcx d
+        call _store_de_hl_addrmode
+
+        xra a
+        ora b
+        jnz sbc_no_cin ; cant be Cout and V together
+
+        ; V = dst == $7fff
+        dcr a ; a <- $ff
+        cmp e
+        jnz sbc_no_cin
+        rar   ; a <- $7f
+        cmp d
+        jnz sbc_no_cin
+        mvi b, PSW_V
+sbc_no_cin:
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        ora b
+        mov m, a
+        jmp _adc_zn
+
 opc_tst:   
         rst 1
 
@@ -3302,19 +3415,36 @@ opc_sob:
         shld r7
         ret
 
+opc_halt: 
+        mvi a, RQ_HALT
+        jmp _raise_irq_a
+        ;lxi h, 177716q
+        ;lxi b, 4
+        ;SAVE_DE_TO_HL
+opc_wait: 
+        rst 1
+opc_bpt:  
+        mvi a, RQ_BPT
+        jmp _raise_irq_a
+opc_iot:  
+        mvi a, RQ_IOT
+        jmp _raise_irq_a
+opc_reset:  
+        rst 1
 opc_emt:
-        lxi h, intflg
         mvi a, RQ_EMT
-        ora m
-        mov m, a
-        ret
+        jmp _raise_irq_a
 
 opc_trap:
-        lxi h, intflg
         mvi a, RQ_TRAP
+        jmp _raise_irq_a
+
+_raise_irq_a:
+        lxi h, intflg
         ora m
         mov m, a
         ret
+        
 
         ; a special entry point, see main cpu loop
 opx_interrupt:
