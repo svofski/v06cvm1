@@ -780,14 +780,40 @@ test_mov1_pgm:
 #endif
 
 #ifdef TEST_SBC
+        .dw 000257q       ;       ccc
+        .dw 005600q       ;       sbc r0
+        .dw 005200q       ;       inc r0
+        .dw 000261q       ;       sec
+        .dw 005600q       ;       sbc r0
+        .dw 000261q       ;       sec
+        .dw 005600q       ;       sbc r0
+        .dw 005000q       ;       clr r0
+        .dw 000261q       ;       sec
+        .dw 006000q       ;       ror r0
+        .dw 000261q       ;       sec
+        .dw 005600q       ;       sbc r0
 #endif
 
 #ifdef TEST_SBCB
+        .dw 012700q       ;       mov #170000, r0
+        .dw 170000q       ;       
+        .dw 000257q       ;       ccc
+        .dw 105600q       ;       sbcb r0
+        .dw 105200q       ;       incb r0
+        .dw 000261q       ;       sec
+        .dw 105600q       ;       sbcb r0
+        .dw 000261q       ;       sec
+        .dw 105600q       ;       sbcb r0
+        .dw 105000q       ;       clrb r0
+        .dw 000261q       ;       sec
+        .dw 106000q       ;       rorb r0
+        .dw 000257q       ;       ccc
+        .dw 000261q       ;       sec
+        .dw 105600q       ;       sbcb r0
 #endif
 
         ; missing tests
-        ; adc, sbc, tst
-        ; adcb, sbcb, tstb
+        ; tst, tstb
         ;
         ; rtt not impl
         ; halt, wait, rti, bpt, iot, reset, rtt
@@ -2679,7 +2705,7 @@ opc_sbc:
         ; 0056dd: sbc dd: dst <- dst - C
         xchg
         call load_dd16
-        dcx h             ; hl = &dst, de = dst
+        dcx h           ; hl = &dst, de = dst
 
         mvi b, 0
 
@@ -2693,12 +2719,12 @@ opc_sbc:
         jnz $+5
         mvi b, PSW_C
 
-        dcx d
+        dcx d           ; dst <- dst - Cin (1)
         call _store_de_hl_addrmode
 
         xra a
         ora b
-        jnz adc_no_cin ; cant be Cout and V together
+        jnz adc_no_cin  ; can't be Cout and V together
 
         ; V = dst == $7fff
         dcr a ; a <- $ff
@@ -2708,6 +2734,7 @@ opc_sbc:
         cmp d
         jnz adc_no_cin
         mvi b, PSW_V
+        jmp adc_no_cin
 
 opc_tst:   
         rst 1
