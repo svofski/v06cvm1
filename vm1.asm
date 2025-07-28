@@ -764,6 +764,27 @@ test_mov1_pgm:
         .dw 005500q       ;       adc r0
 #endif
 
+#ifdef TEST_ADCB
+        .dw 000257q       ;       ccc
+        .dw 105500q       ;       adcb r0
+        .dw 000261q       ;       sec
+        .dw 105500q       ;       adcb r0
+        .dw 112700q       ;       movb #177, r0
+        .dw 000177q       ;       
+        .dw 000261q       ;       sec
+        .dw 105500q       ;       adcb r0
+        .dw 012700q       ;       mov #377, r0
+        .dw 000377q       ;       
+        .dw 000261q       ;       sec
+        .dw 105500q       ;       adcb r0
+#endif
+
+#ifdef TEST_SBC
+#endif
+
+#ifdef TEST_SBCB
+#endif
+
         ; missing tests
         ; adc, sbc, tst
         ; adcb, sbcb, tstb
@@ -878,9 +899,9 @@ test_opcode_table:
         .dw 105200q ; INCB 0177700 
         .dw 105300q ; DECB 0177700 
         .dw 105400q ; NEGB 0177700
-        .dw 105500q ; ADCB 
-        .dw 105600q ; SBCB
-        .dw 105700q ; TSTB 
+        .dw 105500q ; ADCB 0177700
+        .dw 105600q ; SBCB 0177700
+        .dw 105700q ; TSTB 0177700
         .dw 106000q ; RORB 0177700
         .dw 106100q ; ROLB 0177700
         .dw 106200q ; ASRB 0177700
@@ -2640,22 +2661,22 @@ adc_no_cin:
 _adc_zn:        
         mov a, d
         ora e
+        jnz _adc_n
         mvi a, PSW_Z
-        jz $+4
-        xra a
         ora m
         mov m, a
-
+        ret
+_adc_n:
         xra a
-        ora b
+        ora d
+        rp
         mvi a, PSW_N
-        jm $+4
-        xra a
         ora m
         mov m, a
         ret
 
 opc_sbc:   
+        ; 0056dd: sbc dd: dst <- dst - C
         xchg
         call load_dd16
         dcx h             ; hl = &dst, de = dst
@@ -2664,7 +2685,7 @@ opc_sbc:
 
         lda rpsw
         rar
-        jnc sbc_no_cin
+        jnc adc_no_cin
 
         ; dst = dst - 1, if dst == 0, cout = 1
         mov a, d
@@ -2677,23 +2698,16 @@ opc_sbc:
 
         xra a
         ora b
-        jnz sbc_no_cin ; cant be Cout and V together
+        jnz adc_no_cin ; cant be Cout and V together
 
         ; V = dst == $7fff
         dcr a ; a <- $ff
         cmp e
-        jnz sbc_no_cin
+        jnz adc_no_cin
         rar   ; a <- $7f
         cmp d
-        jnz sbc_no_cin
+        jnz adc_no_cin
         mvi b, PSW_V
-sbc_no_cin:
-        lxi h, rpsw
-        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
-        ana m
-        ora b
-        mov m, a
-        jmp _adc_zn
 
 opc_tst:   
         rst 1
@@ -3591,9 +3605,79 @@ opc_negb:
         ret
 
 opc_adcb:
-        rst 1
+        ; 1055dd adcb dd: dst <- dst + c
+        xchg
+        call load_dd8   ; hl = & dst, e = dst8
+
+        mvi b, 0        ; set flags
+        lda rpsw
+        rar             ; PSW_C -> host.C
+        jnc adcb_no_cin
+
+        inr e           ; e = dst8 + cin (1)
+        call _store_e_hl_addrmode
+
+        xra a
+        ora e
+        jnz adcb_no_cout
+        ; cout if dst8 == 0
+        mvi b, PSW_C
+        jmp adcb_no_cin
+adcb_no_cout:
+        mvi a, $80
+        cmp e
+        jnz adcb_no_cin
+        ; V if dst8 == $80, sign change
+        mvi b, PSW_V
+adcb_no_cin:
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        ora b
+        mov m, a
+
+        xra a
+        ora e
+        jnz _adcb_n
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+_adcb_n:      
+        xra a
+        ora e
+        rp
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
+
 opc_sbcb:
-        rst 1
+        ; 10056dd: sbc dd: dst8 <- dst8 - Cin
+        xchg
+        call load_dd8   ; hl = &dst8, e = dst
+
+        mvi b, 0        ; set flags
+
+        lda rpsw        ; test Cin
+        rar
+        jnc adcb_no_cin ; do nothing, set flags like adcb
+
+        dcr e           ; e = dst8 - Cin
+        call _store_e_hl_addrmode
+
+        mvi a, $ff      ; 00->ff -> Cout, V = 0
+        cmp e
+        jnz _sbcb_tv
+        mvi b, PSW_C
+        jmp adcb_no_cin
+_sbcb_tv: 
+        rar             ; a=$7f
+        cmp e
+        jnz adcb_no_cin
+        mvi b, PSW_V    ; dst $80->$7f, V = 1 (sign change)
+        jmp adcb_no_cin
+
 opc_tstb:
         rst 1
 opc_mfps:
