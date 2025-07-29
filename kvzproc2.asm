@@ -19,6 +19,11 @@
 		call kvazreadDE		
 		jmp $
 
+kvazreadDEeven:
+                mvi a, $fe
+                ana l
+                mov l, a
+
 ;Input: address - HL
 ;Output: data - DE
 kvazreadDE:
@@ -42,7 +47,11 @@ kvazreadDE:
 		ei
                 pop h
 		ret
-		
+
+kvazwriteBCeven:
+                mvi a, $fe
+                ana l
+                mov l, a
 ;Input: address - HL, data - BC
 kvazwriteBC:
                 inr h
@@ -70,6 +79,10 @@ kvazwriteBC:
                 pop h
 		ret
                 
+kvazwriteDEeven:
+                mvi a, $fe
+                ana l
+                mov l, a
                 ; [hl] <- de
 kvazwriteDE:
                 push b

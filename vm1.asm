@@ -21,17 +21,17 @@
 
 #ifdef WITH_KVAZ
 
-#define LOAD_DE_FROM_HL     call kvazreadDE \ inx h
-#define LOAD_BC_FROM_HL     push d \ call kvazreadDE \ mov b, d \ mov c, e \ pop d
+#define LOAD_DE_FROM_HL     call kvazreadDEeven \ inx h
+#define LOAD_BC_FROM_HL     push d \ call kvazreadDEeven \ mov b, d \ mov c, e \ pop d \ inx h
 #define LOAD_E_FROM_HL      call kvazreadDE
-#define STORE_BC_TO_HL      call kvazwriteBC \ inx h
+#define STORE_BC_TO_HL      call kvazwriteBCeven \ inx h
 #define STORE_C_TO_HL       call kvazwriteC
 #define STORE_A_TO_HL       mov c, a \ call kvazwriteC
-#define STORE_DE_TO_HL      call kvazwriteDE \ inx h
+#define STORE_DE_TO_HL      call kvazwriteDEeven \ inx h
 #define STORE_E_TO_HL       call kvazwriteE
 
-#define STORE_BC_TO_HL_REVERSE  dcx h \ call kvazwriteBC
-#define STORE_DE_TO_HL_REVERSE  dcx h \ call kvazwriteDE
+#define STORE_BC_TO_HL_REVERSE  dcx h \ call kvazwriteBCeven
+#define STORE_DE_TO_HL_REVERSE  dcx h \ call kvazwriteDEeven
 
 ; de = de + guest[hl], hl = hl + 1
 #define ADD_FROM_HL_TO_DE   push b \ mov b, d \ mov c, e \ call kvazreadDE \ xchg \ dad b \ xchg \ inx h \ pop b
@@ -149,11 +149,13 @@ hlt
 
 #endif
 
+#ifdef TEST_SERIOUSLY
 test_from_000200:
         call vm1_reset
         lxi h, 200q
         shld r7
         jmp tm1_loop
+#endif
 
 test_mov_1:
 #ifdef WITH_KVAZ
@@ -610,6 +612,7 @@ test_mov1_pgm:
 #endif
 
 #ifdef TEST_ADD
+        .dw 060020q 
         .dw 012705q ;
         .dw 000001q ;
         .dw 062705q ;
@@ -963,12 +966,12 @@ test_opcode_table:
         .dw 030000q ; BIT 0170000
         .dw 040000q ; BIC 0170000
         .dw 050000q ; BIS 0170000
-        .dw 060000q ; ADD  0170000
+        .dw 060000q ; ADD 0170000
         ;.xw 070000q ; MUL       -- not in vm1
         ;.xw 071000q ; DIV       -- not in vm1
         ;.xw 072000q ; ASH       -- not in vm1
         ;.xw 073000q ; ASHC      -- not in vm1
-        .dw 074000q ; XOR      
+        .dw 074000q ; XOR 0074000
         ;.xw 075000q ; FADD      -- not in vm1
         ;.xw 075010q ; FSUB      -- not in vm1
         ;.xw 075020q ; FMUL      -- not in vm1
@@ -1818,34 +1821,34 @@ ldwmode3:
         ; R += 2
         inx d
         inx d
-        STORE_DE_TO_HL_REG_REVERSE
+        STORE_DE_TO_HL_REG_REVERSE    ; -> 442
         
         ; restore d
         dcx d
-        dcx d
-        
-        xchg                  ; hl = reg
-        LOAD_DE_FROM_HL       ; de = [hl]
+        dcx d                 ; de <- 440, checked
+
+        xchg                  ; hl <- R before increment
+        LOAD_DE_FROM_HL       ; de <- [hl]  [440]=1526
         
         xchg
-        LOAD_DE_FROM_HL
+        LOAD_DE_FROM_HL       ; de <- [1526], hl = 1527
         ret
         
         .org load16 + (32*4)
         ; -(R)
-ldwmode4:  
+ldwmode4:
         xchg
         LOAD_DE_FROM_HL_REG
-        
+
         ; R -= 2
         dcx d
         dcx d
         STORE_DE_TO_HL_REG_REVERSE
-        
+
         xchg                  ; hl = reg
         LOAD_DE_FROM_HL
         ret
-        
+
         .org load16 + (32*5)
         ; @-(R)
 ldwmode5:  
@@ -1870,25 +1873,37 @@ ldwmode5:
         ;   X = [[R7]], R7 += 2, EA = X + [R7]
         ; de = &reg
 ldwmode6:
-        push d   ; reg addr
+        push d                ; &reg
           lhld r7
-          LOAD_DE_FROM_HL     ; de = (r7), im16
+          LOAD_DE_FROM_HL     ; de <- guest[r7] == im16
           inx h 
           shld r7             ; r7 += 2
-        
-        pop h
-        LOAD_BC_FROM_HL_REG   ; bc = reg
-
-        xchg                ; hl = im16
-        dad b               ; hl = R + im16
-
-        LOAD_DE_FROM_HL     ; de = [hl], addr = hl - 1
+        pop h                 ; hl = &reg
+        LOAD_BC_FROM_HL_REG   ; bc <- reg (updated if r7)
+        xchg                  ; hl <- im16
+        dad b                 ; hl = R + im16
+        ; bc = 442q, confirmed
+        LOAD_DE_FROM_HL       ; de = guest[hl], addr = hl - 1
+        ; de = guest[1546] = 012767 = $15f7
         ret
 
         .org load16 + (32*7)
         ; @X(R)
 ldwmode7:
-        call ldwmode6
+        push d                ; &reg
+          lhld r7
+          LOAD_DE_FROM_HL     ; de <- guest[r7] == im16
+          inx h 
+          shld r7             ; r7 += 2
+        pop h                 ; hl = &reg
+        LOAD_BC_FROM_HL_REG   ; bc <- reg (updated if r7)
+        ; bc = 442q, confirmed
+
+        xchg                  ; hl <- im16
+        dad b                 ; hl = R + im16
+
+        LOAD_DE_FROM_HL       ; de = guest[hl], addr = hl - 1
+
         ; de = adrs
         xchg
         LOAD_DE_FROM_HL
@@ -1920,32 +1935,23 @@ ldbmode1:
 ldbmode2:
         xchg
         LOAD_DE_FROM_HL_REG ; load register
+        push d  ; push EA addr
+          push h  ; save reg addr + 1
+            ; R += 1, but R6 and R7 += 2
+            inx d
+            ; r6, r7 the increment is always 2
+              mvi a, r5 & 255
+              cmp l   ; &r5 - l
+              jp $+4
+              inx d
+              ; ---- 
 
-#ifdef WITH_KVAZ
-        push h
-        push d
-        xchg              ; hl <- R
-        LOAD_DE_FROM_HL   ; de <- (R)
-        mov b, e
-        pop d
+          pop h ; h <- reg addr + 1
+          STORE_DE_TO_HL_REG_REVERSE
         pop h
-#else
-        ldax d  ; a = (R)
-        mov b, a
-#endif    
-        ; R += 1, but R6 and R7 += 2
-        inx d
-        ; r6, r7 the increment is always 2
-          mvi a, r5 & 255
-          cmp l   ; &r5 - l
-          jp $+4
-          inx d
-          ; ---- 
-        STORE_DE_TO_HL_REG_REVERSE
-        
-        mov e, b
+        LOAD_E_FROM_HL
         ret
-        
+
         .org load8 + (32*3)
         ; @(R)+
 ldbmode3:
@@ -2003,8 +2009,6 @@ ldbmode5:
         .org load8 + (32*6)
         ; X(R) - result = [R + im16], im16 = [R7]
 ldbmode6:
-        ;xchg
-        ;LOAD_BC_FROM_HL_REG
         push d
           lhld r7
           LOAD_DE_FROM_HL         ; hidden inx h
@@ -2036,7 +2040,7 @@ stwmode0: ; reg16[dst] = BC
         .org store16 + (32*1)
 stwmode1: ; *reg16[dst] = BC
         xchg
-        STORE_BC_TO_HL_REG
+        STORE_BC_TO_HL
         ret
 
         .org store16 + (32*2)
@@ -2080,26 +2084,38 @@ stwmode5:
 
         .org store16 + (32*6)
 stwmode6:
-        ; *(reg16[dst] + *r7) = BC
-        lhld r7
-        ADD_FROM_HL_TO_DE
-        xchg                  ; de = r7 + 1
-        STORE_BC_TO_HL        ; *ea = bc
-        inx d                 ; r7 += 2
-        xchg
-        shld r7
+        ; de = reg, hl = &reg
+        push b
+          push h ; reg addr
+            lhld r7
+            LOAD_BC_FROM_HL       ; bc <- guest[pc]
+            inx h
+            shld r7               ; r7 ++ 2
+          pop h                   ; h = &reg
+          LOAD_DE_FROM_HL_REG     ; de = reg (updated if r7)
+          xchg                    ; hl = reg
+          dad b                   ; hl = reg + bc, EA
+        pop b
+        STORE_BC_TO_HL
         ret
 
         .org store16 + (32*7)
 stwmode7:
-        ;; **(reg16[dst] + *r7) = BC
-        lhld r7
-        ADD_FROM_HL_TO_DE     ; hl += 1
-        inx h                 ; = r7 + 2
-        shld r7
-        xchg
-        LOAD_DE_FROM_HL
-        xchg
+        ; guest[guest[guest[pc] + reg]] <- bc
+        ; de = reg, hl = &reg
+        push b
+          push h ; reg addr
+            lhld r7
+            LOAD_BC_FROM_HL       ; bc <- guest[pc]
+            inx h
+            shld r7               ; r7 ++ 2
+          pop h                   ; h = &reg
+          LOAD_DE_FROM_HL_REG     ; de = reg (updated if r7)
+          xchg                    ; hl = reg
+          dad b                   ; hl = reg + bc, EA
+          LOAD_DE_FROM_HL
+          xchg
+        pop b
         STORE_BC_TO_HL
         ret
 
@@ -2165,25 +2181,37 @@ stbmode5:
 
         .org store8 + (32*6)
 stbmode6:
-        ; *(reg16[dst] + *r7) = BC
-        lhld r7
-        ADD_FROM_HL_TO_DE
-        xchg                  ; de = r7 + 1
+        push b
+          push h ; reg addr
+            lhld r7
+            LOAD_BC_FROM_HL       ; bc <- guest[pc]
+            inx h
+            shld r7               ; r7 ++ 2
+          pop h                   ; h = &reg
+          LOAD_DE_FROM_HL_REG     ; de = reg (updated if r7)
+          xchg                    ; hl = reg
+          dad b                   ; hl = reg + bc, EA
+        pop b
         STORE_C_TO_HL
-        inx d                 ; r7 += 2
-        xchg
-        shld r7
         ret
+
 
         .org store8 + (32*7)
 stbmode7:
-        lhld r7
-        ADD_FROM_HL_TO_DE
-        inx h                 ; = r7 + 2
-        shld r7
-        xchg
-        LOAD_DE_FROM_HL
-        xchg
+        ; guest[guest[guest[pc] + reg]] <- c
+        push b
+          push h ; reg addr
+            lhld r7
+            LOAD_BC_FROM_HL       ; bc <- guest[pc] = offset/addr
+            inx h
+            shld r7               ; r7 ++ 2
+          pop h                   ; h = &reg
+          LOAD_DE_FROM_HL_REG     ; de = reg (updated if r7)
+          xchg                    ; hl = reg
+          dad b                   ; hl = reg + bc = reg + offset
+          LOAD_DE_FROM_HL         
+          xchg                    ; hl = guest[hl]
+        pop b
         STORE_C_TO_HL
         ret
 
@@ -2262,13 +2290,6 @@ opc_swab:
 
         call _store_bc_hl_addrmode
 
-;        lda vm1_addrmode
-;        ora a
-;        jz swab_reg
-;        STORE_BC_TO_HL
-;        jmp swab_aluf
-;swab_reg:
-;        STORE_BC_TO_HL_REG
 swab_aluf:
         ; aluf NZ, V=0, C = 0
         lxi h, rpsw
@@ -2285,7 +2306,7 @@ swab_aluf:
         mov m, a
 
         xra a
-        ora b
+        ora c
         mvi a, PSW_N
         jm $+4
         xra a
@@ -2444,7 +2465,7 @@ opc_bcs:
 
 opc_jmp:  
         ; 0001dd
-        mvi a, 30q
+        mvi a, 70q
         ana e
         jz jmp_trap
         xchg
@@ -2515,8 +2536,7 @@ clr_aluf_and_ret:
 opc_clrb:
         xchg
         call load_dd8
-        mvi c, 0
-        ;STORE_C_TO_HL
+        lxi b, 0
         call _store_c_hl_addrmode
         jmp clr_aluf_and_ret
 
@@ -2530,7 +2550,6 @@ opc_com:
         mov a, e
         cma
         mov c, a
-        ;STORE_BC_TO_HL
         call _store_bc_hl_addrmode
 
         ; aluf NZ, V=0, C=1
@@ -2546,14 +2565,14 @@ opc_com:
         mvi a, PSW_Z
         ora m
         mov m, a
+        ret
 com_nosetz:
-        mov a, b
-        add a
-        jnz com_nosetn
+        xra a
+        ora b
+        rp
         mvi a, PSW_N
         ora m
         mov m, a
-com_nosetn:
         ret
 
 opc_comb:
@@ -2571,20 +2590,18 @@ opc_comb:
         ori PSW_C
         mov m, a
 
-        mov a, c
-        ora a
+        xra a
+        ora c
         jnz comb_nosetz
         mvi a, PSW_Z
         ora m
         mov m, a
+        ret
 comb_nosetz:
-        mov a, c
-        add a
-        jnz comb_nosetn
+        rp
         mvi a, PSW_N
         ora m
         mov m, a
-comb_nosetn:
         ret
 
 opc_inc:   
@@ -2678,7 +2695,6 @@ opc_neg:
         mov e, a
 
         inx d
-        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
 
         ; aluf NZ, V = 0x8000, C = !Z
@@ -2687,16 +2703,16 @@ opc_neg:
         ana m
         mov m, a
 
-        xra a
-        ora c
+        mov a, d
+        ora e
         mvi a, PSW_Z
-        jnz $+5
+        jz $+5
         mvi a, PSW_C
         ora m
         mov m, a
 
         xra a
-        ora b
+        ora d
         mvi a, PSW_N
         jm $+4
         xra a
@@ -2704,11 +2720,11 @@ opc_neg:
         mov m, a
 
         ; V flag dst == 0100000
-        mov a, c
-        ora a
+        xra a
+        ora e
         rnz
         mvi a, $80
-        cmp b
+        cmp d
         rnz
         mvi a, PSW_V
         ora m
@@ -3138,10 +3154,11 @@ opc_sxt:
         mov b, a
         mov c, a
 
-        mvi a, ~PSW_V
+        mvi a, ~(PSW_V | PSW_Z)
         ana m
         mov m, a
-        xra a
+
+        mov a, b
         ora c
         mvi a, PSW_Z
         jz $+4
@@ -3199,7 +3216,9 @@ opc_bic:
           mov b, d
           mov c, e        ; bc <- src
         pop h
-        call load_dd16    ; de <- dst, hl = dst+1
+        push b
+          call load_dd16    ; de <- dst, hl = dst+1
+        pop b
         mov a, c
         cma
         ana e
@@ -3210,7 +3229,6 @@ opc_bic:
         ana d
         mov b, a          ; bc <- dst & ~src
 
-        ;STORE_BC_TO_HL_REVERSE
         dcx h
         call _store_bc_hl_addrmode
         jmp bit_aluf
@@ -3223,7 +3241,9 @@ opc_bis:
           mov b, d
           mov c, e
         pop h
-        call load_dd16
+        push b
+          call load_dd16
+        pop b
         mov a, c
         ora e
         mov c, a
@@ -3231,7 +3251,6 @@ opc_bis:
         ora d
         mov b, a
 
-        ;STORE_BC_TO_HL_REVERSE
         dcx h
         call _store_bc_hl_addrmode
         jmp bit_aluf
@@ -3243,7 +3262,9 @@ opc_bitb:
           call load_ss8
           mov c, e        ; <- src
         pop h
-        call load_dd8
+        push b
+          call load_dd8
+        pop b
         mov a, c
         ana e
         mov c, a          ; c = src & dst
@@ -3273,12 +3294,13 @@ opc_bicb:
           call load_ss8
           mov c, e
         pop h
-        call load_dd8
+        push b
+          call load_dd8
+        pop b
         mov a, c
         cma
         ana e
         mov c, a      ; c <- dst & ~src
-        ;STORE_C_TO_HL
         call _store_c_hl_addrmode
         jmp bitb_aluf
 
@@ -3289,140 +3311,150 @@ opc_bisb:
           call load_ss8
           mov c, e
         pop h
-        call load_dd8
+        push b
+          call load_dd8
+        pop b
         mov a, c
         ora e
         mov c, a      ; c <- dst & ~src
-        ;STORE_C_TO_HL
         call _store_c_hl_addrmode
         jmp bitb_aluf
 
+;        ; debug BREAK ------ - -   -
+;        lda r7
+;        cpi (15540q & 377q)
+;        jnz notthat
+;        lda r7+1
+;        cpi (15540q >> 8)
+;        jnz notthat
+;        ;hlt
+;        mvi a, $76 ; hlt
+;        sta killswitch
+;notthat:
+;        ; -  --  ----   -------------------
+;killswitch:   nop
+
+
 opc_add:
-        ; 06ssdd ADD ss, dd  dst <- dst + src 
         xchg
         push h
-          call load_ss16    ; de <- src
+          call load_ss16
           mov b, d
           mov c, e
         pop h
+        push b
+          call load_dd16
+          dcx h
+        pop b
+        ; bc = src, de = dst, hl = &dst
+        
         push h
-          call load_dd16    ; de <- dst
           mov h, d
           mov l, e
-          dad b ; hl = dst + src
-          push h ; result 
-            push psw ; carry will be useful
-              ; overflow flag check: sign(src) == sign(dst) && sign(dst) != sign(result) 
-              ;                      sign(bc) == sign(de) && sign(de) != sign(hl) 
-              mov c, h   ; c = result msb
+          dad b         ; hl = src|bc + dst|de
 
-              ; clear all the flags, hl = &rpsw
-              lxi h, rpsw
-              mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
-              ana m
-              mov m, a
-
-              mov a, b
-              xra d
-              cma 
-              ani $80 ; mask sign bit 
-              mov b, a
-
-              mov a, d
-              xra c     ; result msb
-              ana b
-
-              mvi a, PSW_V
-              jm $+4
-              xra a
-              ora m
-              mov m, a  ; hooray, V bit done
-addsub_czn: ; shared with opc_sub!
-            pop psw ; carry
-            mvi a, PSW_C
-            jc $+4
-            xra a
-            ora m
-            mov m, a  ; C bit done
-          pop b ; result
-
-          mov a, b
+          mvi c, 0    ; flags tmp storage
+          jnc $+5
+          mvi c, PSW_C
+          ; overflow flag check: sign(src) == sign(dst) && sign(dst) != sign(result) 
+          ;                      sign(b) == sign(d) && sign(d) != sign(h) 
+          mvi a, $80
+          ana b
+          xra d       ; + --> sign(src) == sign(dst)
+          jm _add_no_v
+          mvi a, $80
+          ana d
+          xra h       ; - --> !=
+          jp _add_no_v
+          mvi a, PSW_V
           ora c
-          mvi a, PSW_Z
-          jz $+4
-          xra a
-          ora m
-          mov m, a ; Z bit
+          mov c, a
+_add_no_v:
 
           xra a
-          ora b
+          ora h
+          jp _add_maybe_z
           mvi a, PSW_N
-          jm $+4
-          xra a
-          ora m
-          mov m, a ; N bit
+          ora c
+          mov c, a
+          jmp _add_flags_done
+_add_maybe_z:
+          ora l
+          jnz _add_flags_done
+          mvi a, PSW_Z
+          ora c
+          mov c, a
+_add_flags_done:
+          xchg          ; de <- result
+          
+          lxi h, rpsw
+          mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+          ana m
+          ora c
+          mov m, a
 
-        pop h ; opcode
-        jmp store_dd16
+        pop h         ; hl <- &dst
+        jmp _store_de_hl_addrmode
+
 
 opc_sub:
-        ; 16ssdd SUB ss, dd  dst <- dst - src 
         xchg
         push h
-          call load_ss16    ; de <- src
+          call load_ss16
           mov b, d
           mov c, e
         pop h
+        push b
+          call load_dd16
+          dcx h
+        pop b
+        ; bc = src, de = dst, hl = &dst
+        
         push h
-          call load_dd16    ; de <- dst
+          mov h, d
+          mov l, e
+
           xra a
-          ora e
+          ora l
           sub c
           mov l, a
-          mov a, d
+          mov a, h
           sbb b
           mov h, a ; hl = dst - src, C = borrow
+          
+          mvi c, 0
+          jnc $+5
+          mvi c, PSW_C
+          ; V = sign(src) != sign(dst) && sign(result) != sign(dst)
+          ;     sign(b)   != sign(d)   && sign(c)      != sign(d)
+          mvi a, $80
+          ana b
+          xra d
+          jp _add_no_v
+          xra d
+          jp _add_no_v
+          mvi a, PSW_V
+          ora c
+          mov c, a
+          jmp _add_no_v
 
-          push h ; result 
-            push psw ; carry will be useful
-              ; overflow flag check: sign(src) == sign(dst) && sign(dst) != sign(result) 
-              ;                      sign(bc) == sign(de) && sign(de) != sign(hl) 
-              mov c, h   ; c = result msb
-
-              ; clear all the flags, hl = &rpsw
-              lxi h, rpsw
-              mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
-              ana m
-              mov m, a
-
-              ; V = sign(src) != sign(dst) && sign(result) != sign(dst)
-              ;     sign(b)   != sign(d)   && sign(c)      != sign(d)
-              mov a, b
-              xra d
-              ani $80 ; mask sign bit
-              mov b, a
-
-              mov a, c
-              xra d
-              ana b 
-
-              mvi a, PSW_V
-              jm $+4
-              xra a
-              ora m
-              mov m, a   ; V bit doneski
-              jmp addsub_czn
 
 opc_cmp: 
         ; 02ssdd CMP ss, dd   src - dst -> flags
         xchg
         push h
+        ;push d
           call load_ss16
           mov b, d
           mov c, e        ; bc <- src
+        ;pop d
         pop h
 
-        call load_dd16  ; de <- dst
+        push b
+          call load_dd16  ; de <- dst
+        pop b
+        
+
         ; src - dst (sub the other way around)
         mov a, c
         sub e
@@ -3481,7 +3513,9 @@ opc_cmpb:
           call load_ss8
           mov c, e      ; c <- src
         pop h
-        call load_dd8   ; e <- dst
+        push b
+          call load_dd8   ; e <- dst
+        pop b
         ; src - dst
         mov a, c
         sub e
@@ -3530,7 +3564,30 @@ cmpb_n:
 
 
 opc_xor:
-        rst 1
+        ; 074rdd xor r,dd: dd <- r ^ dd
+        xchg
+        mvi a, 1
+        ana h
+        mov h, a
+        push h
+          call load_ss16
+          mov b, d
+          mov c, e
+        pop h
+        push b
+          call load_dd16
+        pop b
+        mov a, b
+        xra d
+        mov b, a
+        mov a, c
+        xra e
+        mov c, a
+
+        dcx h
+        call _store_bc_hl_addrmode
+        jmp bit_aluf
+
 opc_sob:
         ; 077Rnn opcode in de, luckily no flags affected
         mov h, d
@@ -3666,7 +3723,6 @@ opc_decb:
         xchg
         call load_dd8
         dcr e
-        ;STORE_E_TO_HL
         call _store_e_hl_addrmode
 
         ; aluf NZV
@@ -3716,7 +3772,7 @@ opc_negb:
         xra a 
         ora e
         mvi a, PSW_Z
-        jnz $+5
+        jz $+5
         mvi a, PSW_C
         ora m
         mov m, a
@@ -3814,7 +3870,11 @@ _sbcb_tv:
 
 opc_mfps:
         ; 1067dd: psw -> dst
-        rst 1
+        push d
+          lhld rpsw
+          mov c, l
+          jmp movb_setaluf_and_store
+
 opc_mtps:
         ; 1064dd: dst -> psw
         xchg
@@ -3832,6 +3892,9 @@ mtps_halt:
         ret
 mtps_user:
         dcx h   ; msb of psw unchanged 
+        mvi a, ~PSW_T
+        ana e
+        mov e, a
         mvi a, PSW_T
         ana m   ; keep T bit
         ora e   ; set bits from dst

@@ -134,8 +134,8 @@ void Memory::write(uint32_t addr, uint8_t w8, bool stackrq)
 #ifndef NODEBUGGER
     if (debug_onwrite) debug_onwrite(bigaddr, w8);
 #endif
-    //if (bigaddr > 0xffff)
-    //    printf("write(%05x)->%02x\n", bigaddr, w8);
+    if (bigaddr > 0xffff)
+        fprintf(stderr, "write(%05x)->%02x\n", bigaddr, w8);
 }
 
 void Memory::init_from_vector(const vector<uint8_t> & from, uint32_t start_addr)

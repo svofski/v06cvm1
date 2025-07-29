@@ -181,6 +181,7 @@ void dump(const char * ff, size_t ret)
     kvaz(1);
     fprintf(stderr, "HOST: %s %lu bytes\n", ff, ret);
     for (int i = 0; i < ret + 16; i += 16) {
+        fprintf(stderr, "%04x ", i);
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
                 fprintf(stderr, "%02x%c", i8080_hal_memory_read_byte(i+j, true), j == 7 ? '-' : ' ');
@@ -498,9 +499,12 @@ void execute_test(const char* filename, int success_check) {
 
         int const pc = i8080_pc();
         if (i8080_hal_memory_read_byte(pc) == 0x76 || i8080_hal_memory_read_byte(pc) == 0xc7) {
-            fprintf(stderr, "HLT at %04X Total: %lu cycles\n", pc, cycles);
+            fprintf(stderr, "\nHLT at %04X Total: %lu cycles. ", pc, cycles);
+            fprintf(stderr, "A=%02x BC=%04x DE=%04x HL=%04x SP=%04x\n",
+                    i8080_regs_a(),
+                    i8080_regs_bc(), i8080_regs_de(), i8080_regs_hl(), i8080_regs_sp());
 
-            dump("mem", 256);
+            dump("mem", 512);
             return;
         }
 
