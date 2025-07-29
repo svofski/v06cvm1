@@ -93,7 +93,23 @@ void attr_diff(int differ)
 extern uint16_t DisassembleInstruction(const uint16_t* pMemory, uint16_t addr, 
         char* strInstr, char* strArg);
 
-void load_file(const char* name, int addr)
+void kvaz(int on)
+{
+    if (on) {
+#ifdef WITH_KVAZ
+        i8080_hal_io_output(0x10, 0x10);
+#endif
+    }
+    else {
+#ifdef WITH_KVAZ
+        i8080_hal_io_output(0x10, 0x0);
+#endif
+    }
+}
+
+
+
+void load_file(const char* name, int addr, int kvas)
 {
     FILE* f = fopen(name, "r+b");
 
@@ -115,24 +131,13 @@ void load_file(const char* name, int addr)
     fprintf(stderr, "\n*********************************\n");
     fprintf(stderr, "File \"%s\" loaded, size %d\n", name, sz);
 
+    kvaz(kvas);
+
     for (size_t n = 0; n < sz; ++n) {
-        i8080_hal_memory_write_byte(n + addr, buffer[n]);
+        i8080_hal_memory_write_byte(n + addr, buffer[n], kvas);
     }
-}
 
-void trace_zpu(unsigned char * mem)
-{
-    uint16_t zpc = i8080_regs_sp();
-    uint16_t zsp = i8080_regs_bc();
-
-    fprintf(stderr, "ZPC: %04x insn=%02x ZSP: %04x -> ", zpc, mem[zpc], zsp);
-    for (int i = 0; i < 6; ++i) {
-        for (int j = 0; j < 4; ++j) {
-            fprintf(stderr, "%02x", mem[zsp + i*4 + j]);
-        }
-        fprintf(stderr, " ");
-    }
-    fprintf(stderr, "\n");
+    kvaz(0);
 }
 
 
@@ -169,21 +174,6 @@ typedef struct {
 tap_t tapdev;
 
 void tap_send(tap_t * tap);
-
-
-void kvaz(int on)
-{
-    if (on) {
-#ifdef WITH_KVAZ
-        i8080_hal_io_output(0x10, 0x10);
-#endif
-    }
-    else {
-#ifdef WITH_KVAZ
-        i8080_hal_io_output(0x10, 0x0);
-#endif
-    }
-}
 
 
 void dump(const char * ff, size_t ret)
@@ -491,7 +481,7 @@ void execute_test(const char* filename, int success_check) {
     i8080_hal_memory_write_byte(6, 0x00);
     i8080_hal_memory_write_byte(7, 0xc0);
 
-    load_file(filename, 0x100);
+    load_file(filename, 0x100, 0);  // load runtime under test
 
     //tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x9000]);
     //tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x8000]);
@@ -574,11 +564,6 @@ void execute_test(const char* filename, int success_check) {
             }
         }
 
-        // ZPU PC trace
-        //if (mem[i8080_pc()] == 0xe1) {
-        //    trace_zpu(mem);
-        //}
-
         int instr_cycles = i8080_instruction();
 
         cycles += instr_cycles;
@@ -605,6 +590,7 @@ int main(int argc, char **argv) {
         filename = argv[1];
     }
 
+    load_file("bktests/791401", 0, 1);  // load bk test into guest ram
     execute_test(filename, 0);
     return 0;
 }

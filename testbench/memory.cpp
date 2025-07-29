@@ -13,7 +13,7 @@ Memory::Memory() : mode_stack(false), mode_map(false), page_map(0),
     page_stack(0)
 {
     memset(bytes, 0, sizeof(bytes));
-    printf("memory init\n");
+    //printf("memory init\n");
 }
 
 // Barkar extensions:

@@ -108,6 +108,10 @@
         ;jmp test_mov_1
         ;jmp test_opcodes
 
+#ifdef TEST_SERIOUSLY
+        jmp test_from_000200
+#endif
+
 #ifdef TEST_ADDRMODES
         jmp test_addrmodes
 #endif
@@ -144,7 +148,13 @@ hlt
         rst 0
 
 #endif
-        
+
+test_from_000200:
+        call vm1_reset
+        lxi h, 200q
+        shld r7
+        jmp tm1_loop
+
 test_mov_1:
 #ifdef WITH_KVAZ
         ; copy the test to guest ram, same addresses
@@ -846,6 +856,24 @@ test_mov1_pgm:
         .dw 110211q
         .dw 105202q
         .dw 100373q
+#endif
+
+#ifdef TEST_TX3
+        .dw 012702q
+        .dw 001034q
+        .dw 012700q
+        .dw 177564q
+        .dw 012701q
+        .dw 177566q
+        .dw 111005q
+        .dw 105710q
+        .dw 100376q
+        .dw 112203q
+        .dw 001402q
+        .dw 110311q
+        .dw 100372q
+        .dw 000000q
+        .db "This is a test string", 10, 13, 0
 #endif
 
         ; missing tests
@@ -2364,7 +2392,8 @@ opc_ble:    ; Z | (N ^ V) = 1
         ana m
         jpo opc_br_int  ; N ^ V = 1 -> yes
         mvi a, PSW_Z
-        jz opc_br_int
+        ana m
+        jnz opc_br_int
         ret
 opc_bpl:
         lda rpsw

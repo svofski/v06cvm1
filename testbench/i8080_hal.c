@@ -58,7 +58,7 @@ int i8080_hal_memory_read_byte(int addr, bool stack) {
 void i8080_hal_memory_write_byte(int addr, int byte, bool stack) {
     if (addr < 256) {
         // print scratchpad area writes
-        fprintf(stderr, " [%04o<-%02x]", addr, byte);
+        //fprintf(stderr, " [%04o<-%02x]", addr, byte);
     }
     //memory[addr & 0xffff] = byte;
     memory.write(addr, byte, stack);
