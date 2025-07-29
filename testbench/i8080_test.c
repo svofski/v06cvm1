@@ -62,31 +62,31 @@ attr_mode_t attrmode = ATTR_HOST;
 
 void attr_host()
 {
-    printf("\033[0m");
+    fprintf(stderr, "\033[0m");
 }
 
 void attr_guest()
 {
-    printf("\033[93m"); // light yellow
+    fprintf(stderr, "\033[93m"); // light yellow
 }
 
 void attr_reg()
 {
-    printf("\033[96m"); // light cyan
+    fprintf(stderr, "\033[96m"); // light cyan
 }
 
 void attr_psw()
 {
-    printf("\033[97m"); // light blue
+    fprintf(stderr, "\033[97m"); // light blue
 }
 
 void attr_diff(int differ)
 {
     if (differ) {
-        printf("\033[48;5;94m");
+        fprintf(stderr, "\033[48;5;94m");
     }
     else {
-        printf("\033[49m");
+        fprintf(stderr, "\033[49m");
     }
 }
 
@@ -112,8 +112,8 @@ void load_file(const char* name, int addr)
         sz += read;
         load_to += read;
     }
-    printf("\n*********************************\n");
-    printf("File \"%s\" loaded, size %d\n", name, sz);
+    fprintf(stderr, "\n*********************************\n");
+    fprintf(stderr, "File \"%s\" loaded, size %d\n", name, sz);
 
     for (size_t n = 0; n < sz; ++n) {
         i8080_hal_memory_write_byte(n + addr, buffer[n]);
@@ -125,14 +125,14 @@ void trace_zpu(unsigned char * mem)
     uint16_t zpc = i8080_regs_sp();
     uint16_t zsp = i8080_regs_bc();
 
-    printf("ZPC: %04x insn=%02x ZSP: %04x -> ", zpc, mem[zpc], zsp);
+    fprintf(stderr, "ZPC: %04x insn=%02x ZSP: %04x -> ", zpc, mem[zpc], zsp);
     for (int i = 0; i < 6; ++i) {
         for (int j = 0; j < 4; ++j) {
-            printf("%02x", mem[zsp + i*4 + j]);
+            fprintf(stderr, "%02x", mem[zsp + i*4 + j]);
         }
-        printf(" ");
+        fprintf(stderr, " ");
     }
-    printf("\n");
+    fprintf(stderr, "\n");
 }
 
 
@@ -189,27 +189,27 @@ void kvaz(int on)
 void dump(const char * ff, size_t ret)
 {
     kvaz(1);
-    printf("HOST: %s %lu bytes\n", ff, ret);
+    fprintf(stderr, "HOST: %s %lu bytes\n", ff, ret);
     for (int i = 0; i < ret + 16; i += 16) {
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
-                printf("%02x%c", i8080_hal_memory_read_byte(i+j, true), j == 7 ? '-' : ' ');
+                fprintf(stderr, "%02x%c", i8080_hal_memory_read_byte(i+j, true), j == 7 ? '-' : ' ');
             }
             else {
-                printf("   ");
+                fprintf(stderr, "   ");
             }
         }
-        printf("  ");
+        fprintf(stderr, "  ");
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
                 int c = i8080_hal_memory_read_byte(i+j, true);
-                printf("%c", (c >= 0x20 && c < 0x7f) ? c : '.');
+                fprintf(stderr, "%c", (c >= 0x20 && c < 0x7f) ? c : '.');
             }
             else {
-                printf(" ");
+                fprintf(stderr, " ");
             }
         }
-        printf("\n");
+        fprintf(stderr, "\n");
     }
     kvaz(0);
 }
@@ -239,7 +239,7 @@ void tap_init(tap_t * tap, const char * devtap, uint8_t * rxbuf, uint8_t * txbuf
 
     tap->tx_state = tap->tx_len = tap->txbuf_ofs = tap->readstate = 0;
 
-    printf("H: succesfully opened tun/tap %s\n", devtap);
+    fprintf(stderr, "H: succesfully opened tun/tap %s\n", devtap);
 }
 
 void tap_rx_push(tap_t * tap, uint8_t b)
@@ -300,10 +300,10 @@ unsigned tap_poll(tap_t * tap)
         }
     }
     else {
-        printf("input buffer overrun, packet dropped\n");
+        fprintf(stderr, "input buffer overrun, packet dropped\n");
     }
 
-    //printf("received packet, rxbuf size=%d\n", tap->rxbuf_size);
+    //fprintf(stderr, "received packet, rxbuf size=%d\n", tap->rxbuf_size);
 
     return ret;
 }
@@ -320,7 +320,7 @@ uint8_t tap_read_data(tap_t * tap)
         retval = tap_rx_pop(tap);
         ++bytesread;
         if (tap->rxbuf_size == 0) {
-            //printf("\nRXBUF empty, POPPED=%d\n", bytesread);
+            //fprintf(stderr, "\nRXBUF empty, POPPED=%d\n", bytesread);
             bytesread = 0;
         }
     }
@@ -349,7 +349,7 @@ void tap_write_data(tap_t * tap, uint8_t c)
         tap->txbuf[tap->txbuf_ofs++] = c;
 
         if (tap->txbuf_ofs == tap->tx_len) {
-            printf("tap_write_data: sending out\n");
+            fprintf(stderr, "tap_write_data: sending out\n");
             tap_send(tap);
             tap->tx_len = tap->txbuf_ofs = tap->tx_state = 0;
         }
@@ -400,7 +400,7 @@ int i8080_hal_io_input(int port)
             return tapdev.csr;
         case 0x07:
             ret = tap_read_data(&tapdev);
-            //printf("[%02x]", ret);
+            //fprintf(stderr, "[%02x]", ret);
             return ret;
     }
     return 0;
@@ -425,9 +425,9 @@ int find_in_opcode_handlers(int pc)
 int find_opcode_index(int code)
 {
     const int n = (int)(sizeof(opc_codes)/sizeof(opc_codes[0]));
-    //printf(": opcode=%06o\n", code);
+    //fprintf(stderr, ": opcode=%06o\n", code);
     for (int i = 0; i < n; ++i) {
-        //printf(": opc_code=%06o opc_mask=%06o  code&mask=%06o\n",
+        //fprintf(stderr, ": opc_code=%06o opc_mask=%06o  code&mask=%06o\n",
         //        opc_codes[i], opc_masks[i], code & opc_masks[i]);
         if (opc_codes[i] == (code & opc_masks[i])) {
             return i;
@@ -461,7 +461,7 @@ void print_regs()
         //uint16_t reg = mem[vm1_regfile_addr + i * 2] | (mem[vm1_regfile_addr + i * 2 + 1] << 8);
         uint16_t reg = get_guest_reg(i);
         attr_diff(reg != prev_regs[i]);
-        printf("%06o ", reg);
+        fprintf(stderr, "%06o ", reg);
         prev_regs[i] = reg;
     }
 
@@ -474,7 +474,7 @@ void print_regs()
         if ((psw & 1) == 0) flags[8 - i] = '.';
         psw >>= 1;
     }
-    printf(" %s ", flags);
+    fprintf(stderr, " %s ", flags);
 
 }
 
@@ -508,7 +508,7 @@ void execute_test(const char* filename, int success_check) {
 
         int const pc = i8080_pc();
         if (i8080_hal_memory_read_byte(pc) == 0x76 || i8080_hal_memory_read_byte(pc) == 0xc7) {
-            printf("HLT at %04X Total: %lu cycles\n", pc, cycles);
+            fprintf(stderr, "HLT at %04X Total: %lu cycles\n", pc, cycles);
 
             dump("mem", 256);
             return;
@@ -524,7 +524,7 @@ void execute_test(const char* filename, int success_check) {
             kvaz(0);
             DisassembleInstruction(insnbuf, pc, 
                     instr_buf, arg_buf);
-            printf("\n%06o: %-8s%-32s", pc, instr_buf, arg_buf);
+            fprintf(stderr, "\n%06o: %-8s%-32s", pc, instr_buf, arg_buf);
 
             print_regs();
         }
@@ -534,25 +534,25 @@ void execute_test(const char* filename, int success_check) {
             int executed_opcode = i8080_hal_memory_read_word(vm1_opcode_addr);
             const char * label = opc_labels[opc];
 
-            printf("opc: %06o %-8s @%04x", executed_opcode, label, opc_addrs[opc]);
+            fprintf(stderr, "opc: %06o %-8s @%04x", executed_opcode, label, opc_addrs[opc]);
 
             int index = find_opcode_index(executed_opcode);
             if (index >= 0 && strcmp(label+4, opc_names[index]) == 0) {
-                //printf(" OK\n");
+                //fprintf(stderr, " OK\n");
             }
             else {
-                printf(" ERROR: expected opcode %o %s, actual label: %s\n",
+                fprintf(stderr, " ERROR: expected opcode %o %s, actual label: %s\n",
                         executed_opcode, opc_names[index], label);
             }
 
         }
 
         //if (mem[pc] == 0xd3) {
-        //    printf("out %d = %02x\n", mem[pc+1], i8080_regs_a());
+        //    fprintf(stderr, "out %d = %02x\n", mem[pc+1], i8080_regs_a());
         //}
 
         //if (pc == 0x6db3) {
-        //    printf("write HL=%04X\n", i8080_regs_hl());
+        //    fprintf(stderr, "write HL=%04X\n", i8080_regs_hl());
         //}
 
         if (pc == 0x0005) {
@@ -588,7 +588,7 @@ void execute_test(const char* filename, int success_check) {
             usleep(1);
         }
         //if (i8080_pc() == 0) {
-        //    printf("\nJump to 0000 from %04X\n", pc);
+        //    fprintf(stderr, "\nJump to 0000 from %04X\n", pc);
         //    if (success_check && !success)
         //        exit(1);
         //    return;

@@ -89,11 +89,11 @@
         call setreg \ .dw r3 \ .dw $1234
         call assert_reg_equals \ .dw r3 \ .dw $1234
 
-        call putsi \ .db 10, 13, "SETMEM->", 10, 13, '$'
+        ;call putsi \ .db 10, 13, "SETMEM->", 10, 13, '$'
         call setmem \.dw $1000 \ .dw $beef
-        call putsi \ .db 10, 13, "MEM_EQUALS->", 10, 13, '$'
+        ;call putsi \ .db 10, 13, "MEM_EQUALS->", 10, 13, '$'
         call assert_mem_equals \ .dw $1000 \ .dw $beef
-        call putsi \ .db 10, 13, "FFFUUU->", 10, 13, '$'
+        ;call putsi \ .db 10, 13, "FFFUUU->", 10, 13, '$'
 
         ; install rst1
         mvi a, $c3
@@ -810,6 +810,42 @@ test_mov1_pgm:
         .dw 000257q       ;       ccc
         .dw 000261q       ;       sec
         .dw 105600q       ;       sbcb r0
+#endif
+
+#ifdef TEST_TST
+        .dw 005700q       ;       tst r0
+        .dw 005300q       ;       dec r0
+        .dw 000257q       ;       ccc
+        .dw 005700q       ;       tst r0
+        .dw 005000q       ;       clr r0
+        .dw 000257q       ;       ccc
+        .dw 105700q       ;       tstb r0
+        .dw 105300q       ;       decb r0
+        .dw 000257q       ;       ccc
+        .dw 105700q       ;       tstb r0
+#endif
+
+#ifdef TEST_TX
+        .dw 012700q
+        .dw 177564q
+        .dw 111001q
+        .dw 105710q
+        .dw 100376q
+#endif
+
+#ifdef TEST_TX2
+        .dw 112702q
+        .dw 000040q
+        .dw 012700q
+        .dw 177564q
+        .dw 012701q
+        .dw 177566q
+        .dw 111005q
+        .dw 105710q
+        .dw 100376q
+        .dw 110211q
+        .dw 105202q
+        .dw 100373q
 #endif
 
         ; missing tests
@@ -2737,7 +2773,49 @@ opc_sbc:
         jmp adc_no_cin
 
 opc_tst:   
-        rst 1
+        xchg
+        call load_dd16
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+
+        xra a
+        ora d
+        jm _tst_n
+        ora e
+        rnz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+_tst_n:
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
+
+opc_tstb:
+        xchg
+        call load_dd8
+        lxi h, rpsw
+        mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
+        ana m
+        mov m, a
+
+        xra a
+        ora e
+        jm _tstb_n
+        rnz
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+_tstb_n:
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
 
 opc_ror:   
         ; 0060dd ROR dd
@@ -3705,8 +3783,6 @@ _sbcb_tv:
         mvi b, PSW_V    ; dst $80->$7f, V = 1 (sign change)
         jmp adcb_no_cin
 
-opc_tstb:
-        rst 1
 opc_mfps:
         ; 1067dd: psw -> dst
         rst 1
