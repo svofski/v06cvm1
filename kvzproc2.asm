@@ -135,6 +135,9 @@ readregDE:
                 mvi a, 160q  ; 177560 rx control
                 cmp l
                 jz read_rx_control
+                mvi a, 162   ; 177562 rx data
+                cmp l
+                jz read_rx_data
                 jmp jmp_trap  ; nonexistent reg
 writeregBC:
                 jmp jmp_trap
@@ -152,8 +155,8 @@ writeregC:
 
 tx_control_reg: .db 0         ; 177564
 tx_data_reg:    .db 0         ; 177566
-rx_control_reg: .db 0
-rx_data_reg:    .db 0
+rx_control_reg: .db 0         ; 177560 
+rx_data_reg:    .db 0         ; 177562
 
 read_tx_control:
                 ;lda tx_control_reg
@@ -162,12 +165,36 @@ read_tx_control:
                 mvi d, 0
                 ret
 read_rx_control:
+                lxi d, 0
                 lda rx_control_reg
+                ora a
                 mov e, a
+                rm        ; char awaits
+
+                mvi c, $b ; C_STAT console status
+                call 5
+                lxi d, 0
+                ora a
+                rz
+                mvi a, $80
+                sta rx_control_reg
+                
+                ; read the char
+                mvi c, 1
+                call 5
+                sta rx_data_reg
+
+                mvi e, $80
+
+                ret
+read_rx_data:
+                lxi h, rx_data_reg
+                mov e, m
+                dcx h
+                mvi m, 0
                 mvi d, 0
                 ret
 write_tx_data:
-                hlt
                 mov a, c
                 sta tx_data_reg
                 sta txstrbuf

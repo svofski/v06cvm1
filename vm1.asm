@@ -101,10 +101,13 @@
         lxi h, rst1_handler
         shld 8+1
 
+#ifdef TESTBENCH
         ; install fake call5
         mvi a, $c9
         sta 5
-
+#else
+        call load_file
+#endif
         ;jmp test_mov_1
         ;jmp test_opcodes
 
@@ -152,7 +155,8 @@ hlt
 #ifdef TEST_SERIOUSLY
 test_from_000200:
         call vm1_reset
-        lxi h, 200q
+        ;lxi h, 200q
+        lxi h, rom_start_addr   ; 200q for 791401, 140000q for 013-basic
         shld r7
         jmp tm1_loop
 #endif
@@ -1307,6 +1311,10 @@ clearmem_l0:
         cmp b
         jnz clearmem_l0
         ret
+
+#ifndef TESTBENCH
+        .include "loader.asm"
+#endif
         
         ;
         ;
@@ -1314,7 +1322,7 @@ clearmem_l0:
         ;
         ;
 
-        .org $6000
+        .org $4000
 
 vm1_reset:
         lxi h, regfile
@@ -2328,8 +2336,6 @@ swab_aluf:
 
         ret
         
-opc_rtt:  
-        rst 1
 opc_rts:  
         ; de = opcode 00020R
         ; r7 = R
@@ -2351,6 +2357,8 @@ opc_rts:
         STORE_BC_TO_HL_REG_REVERSE  ; R = bc
         ret
 
+opc_rtt:  
+        nop
 opc_rti:  
         lhld r6
         LOAD_DE_FROM_HL   ; pop pc -> bc
