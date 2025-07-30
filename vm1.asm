@@ -227,7 +227,6 @@ vm1int_trap_not:
         lxi h, 4q
         jmp tm1_loop_enter_interrupt
 vm1int_rply_not:
-
         mvi a, RQ_RSVD
         ana m
         jz vm1int_rsvd_not
@@ -238,7 +237,15 @@ vm1int_rply_not:
         lxi h, 10q
         jmp tm1_loop_enter_interrupt
 vm1int_rsvd_not:
-
+        mvi a, RQ_IOT
+        ana m
+        jz vm1int_iot_not
+        mvi a, ~RQ_IOT
+        ana m
+        mov m, a
+        lxi h, 20q
+        jmp tm1_loop_enter_interrupt
+vm1int_iot_not:
         hlt
         jmp $   ; impossible, stop
 
@@ -2145,7 +2152,13 @@ stbmode2: ; *reg16[dst] = C, reg16[dst] += 1
         xchg                  ; hl = reg16[dst], de = &reg16[dst]
         STORE_C_TO_HL
         xchg
-        inx d
+        inx d                 ; R += 1
+
+        mvi a, r5 & 255
+        cmp l
+        jp $+4
+        inx d               ; R += 2 for SP, PC
+
         STORE_DE_TO_HL_REG
         ret
 

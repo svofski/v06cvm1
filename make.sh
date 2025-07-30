@@ -18,7 +18,7 @@ mkdir -p log
 for test in $TESTS ; do
   echo -e "\e[7mTEST: $test\e[0m"
   ./TASM.EXE -b -85 -DTEST_$test=1 $WITH_KVAZ vm1.asm vm1.com >> tasm.log 2>&1
-  testbench/i8080_test | tee log/testbench-$test.txt
+  testbench/i8080_test | tee log/testbench-$test.txt 2>(tee log/testbench-$test-stderr.txt)
   cat log/testbench-$test.txt
 done
 
