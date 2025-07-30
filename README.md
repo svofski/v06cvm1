@@ -1,4 +1,6 @@
-VM1 on 8080A
-~~~~~~~~~~~~
+1801VM1 emulated on Vector-06C
+==============================
 
-![zhdu](docs/zhdu.gif)
+![lala](doc/zhdu.gif)
+
+...
