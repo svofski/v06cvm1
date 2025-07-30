@@ -53,4 +53,13 @@ extern int i8080_regs_e(void);
 extern int i8080_regs_h(void);
 extern int i8080_regs_l(void);
 
+extern void i8080_setreg_a(uint8_t val);
+extern void i8080_setreg_b(uint8_t val);
+extern void i8080_setreg_c(uint8_t val);
+extern void i8080_setreg_d(uint8_t val);
+extern void i8080_setreg_e(uint8_t val);
+extern void i8080_setreg_h(uint8_t val);
+extern void i8080_setreg_l(uint8_t val);
+extern void i8080_setreg_sp(uint16_t val);
+
 #endif

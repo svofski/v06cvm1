@@ -31,6 +31,8 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
+#include <stdint.h>
+
 #include "i8080.h"
 #include "i8080_hal.h"
 
@@ -1766,4 +1768,44 @@ int i8080_regs_h(void) {
 
 int i8080_regs_l(void) {
     return L;
+}
+
+void i8080_setreg_a(uint8_t val)
+{
+    A = val;
+}
+
+void i8080_setreg_b(uint8_t val)
+{
+    B = val;
+}
+
+void i8080_setreg_c(uint8_t val)
+{
+    C = val;
+}
+
+void i8080_setreg_d(uint8_t val)
+{
+    D = val;
+}
+
+void i8080_setreg_e(uint8_t val)
+{
+    H = val;
+}
+
+
+void i8080_setreg_h(uint8_t val)
+{
+    H = val;
+}
+void i8080_setreg_l(uint8_t val)
+{
+    L = val;
+}
+
+void i8080_setreg_sp(uint16_t val)
+{
+    SP = val;
 }

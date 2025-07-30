@@ -566,6 +566,18 @@ void execute_test(const char* filename, int success_check) {
                 attr_host();
                 fflush(stdout);
             }
+            else if (i8080_regs_c() == 11) {
+                i8080_setreg_a(1);
+                i8080_setreg_l(1);
+            }
+            else if (i8080_regs_c() == 1) {
+                fprintf(stderr, "------------->\n");
+                fflush(stderr);
+                fflush(stdout);
+                int c = getchar();
+                i8080_setreg_a(c);
+                fprintf(stderr, "------------- CONSOLE INPUT: %c 0%03o 0x%02x\n", c, c, c);
+            }
         }
 
         int instr_cycles = i8080_instruction();
@@ -594,7 +606,8 @@ int main(int argc, char **argv) {
         filename = argv[1];
     }
 
-    load_file("bktests/791401", 0, 1);  // load bk test into guest ram
+    //load_file("bktests/791401", 0, 1);  // load bk test into guest ram
+    load_file("bktests/013-basic.bin", 0140000, 1);  // load bk test into guest ram
     execute_test(filename, 0);
     return 0;
 }

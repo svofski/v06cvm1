@@ -135,7 +135,7 @@ readregDE:
                 mvi a, 160q  ; 177560 rx control
                 cmp l
                 jz read_rx_control
-                mvi a, 162   ; 177562 rx data
+                mvi a, 162q   ; 177562 rx data
                 cmp l
                 jz read_rx_data
                 jmp jmp_trap  ; nonexistent reg
@@ -180,7 +180,11 @@ read_rx_control:
                 sta rx_control_reg
                 
                 ; read the char
-                mvi c, 1
+                ; mvi c, 1 -- this is with echo, sux
+                ; call 5
+                ; sta rx_data_reg
+                mvi c, 6 ; raw console i/o
+                mvi e, $ff
                 call 5
                 sta rx_data_reg
 

@@ -271,6 +271,8 @@ test_mov1_pgm:
 #ifdef TEST_MOV
         .dw 012700q, 1    ; mov #1, r0
         .dw 012702q, 2    ; mov #2, r2
+        .dw 012737q, 0123456q, 00000004q ; mov #123456, @#4
+        .dw 016202q, 2    ; mov 2(r2),r2
         .dw 010001q       ; mov r0, r1
         .dw 010200q       ; mov r2, r0
         .dw 012705q       ; mov #125125, r5
@@ -1312,9 +1314,9 @@ clearmem_l0:
         jnz clearmem_l0
         ret
 
-#ifndef TESTBENCH
+;#ifndef TESTBENCH
         .include "loader.asm"
-#endif
+;#endif
         
         ;
         ;
