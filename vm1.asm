@@ -79,6 +79,7 @@
 #define RQ_HALT   32
 #define RQ_RSVD   64  ; nonexistent instruction
         
+#ifdef NOOOOOO
         lxi d, $1234
         call assert_de_equals
         .dw $1234
@@ -94,6 +95,7 @@
         ;call putsi \ .db 10, 13, "MEM_EQUALS->", 10, 13, '$'
         call assert_mem_equals \ .dw $1000 \ .dw $beef
         ;call putsi \ .db 10, 13, "FFFUUU->", 10, 13, '$'
+#endif
 
         ; install rst1
         mvi a, $c3
@@ -2923,10 +2925,25 @@ ror_aluf:
         jmp rol_nzv
 
 opc_rol:   
+;        ; debug BREAK ------ - -   -
+;        lda r7
+;        cpi (10010q & 377q)
+;        jnz notthat
+;        lda r7+1
+;        cpi (10010q >> 8)
+;        jnz notthat
+;        ;hlt
+;        mvi a, $76 ; hlt
+;        sta killswitch
+;notthat:
+;        ; -  --  ----   -------------------
+;killswitch:   nop
+
         ; 0061dd ROL dd
         xchg
         call load_dd16
         dcx h
+
 
         mov b, d ; remember msb
 
@@ -2940,7 +2957,6 @@ opc_rol:
         mov l, a
 
         xchg
-        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
 rol_aluf:
         ; aluf NZVC
@@ -3343,21 +3359,6 @@ opc_bisb:
         call _store_c_hl_addrmode
         jmp bitb_aluf
 
-;        ; debug BREAK ------ - -   -
-;        lda r7
-;        cpi (15540q & 377q)
-;        jnz notthat
-;        lda r7+1
-;        cpi (15540q >> 8)
-;        jnz notthat
-;        ;hlt
-;        mvi a, $76 ; hlt
-;        sta killswitch
-;notthat:
-;        ; -  --  ----   -------------------
-;killswitch:   nop
-
-
 opc_add:
         xchg
         push h
@@ -3448,13 +3449,13 @@ opc_sub:
           mvi c, 0
           jnc $+5
           mvi c, PSW_C
-          ; V = sign(src) != sign(dst) && sign(result) != sign(dst)
-          ;     sign(b)   != sign(d)   && sign(c)      != sign(d)
-          mvi a, $80
-          ana b
+          ; simh: V = GET_SIGN_W ((src ^ src2) & (~src ^ dst));
+          mov a, b
           xra d
           jp _add_no_v
-          xra d
+          mov a, b
+          cma
+          xra h
           jp _add_no_v
           mvi a, PSW_V
           ora c
@@ -3902,7 +3903,7 @@ opc_mtps:
         ; 1064dd: dst -> psw
         xchg
         call load_dd16  ; de <- dd
-
+_mtps_de:
         lxi h, rpsw + 1
         mvi a, PSW_HALT >> 8
         ana m

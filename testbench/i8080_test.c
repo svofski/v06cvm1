@@ -607,7 +607,8 @@ int main(int argc, char **argv) {
     }
 
     //load_file("bktests/791401", 0, 1);  // load bk test into guest ram
-    load_file("bktests/013-basic.bin", 0140000, 1);  // load bk test into guest ram
+    //load_file("bktests/013-basic.bin", 0140000, 1);  // load bk test into guest ram
+    load_file("bktests/GKAAA0", 0, 1);  // load GKAAA0 at address 0, start 0200
     execute_test(filename, 0);
     return 0;
 }

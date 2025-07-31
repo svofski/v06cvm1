@@ -138,9 +138,15 @@ readregDE:
                 mvi a, 162q   ; 177562 rx data
                 cmp l
                 jz read_rx_data
+
+                mvi a, 376q   ; pdp-11 PS
+                cmp l
+                jz read_ps177776
+
                 jmp jmp_trap  ; nonexistent reg
 writeregBC:
-                jmp jmp_trap
+                ;hlt
+                ;jmp jmp_trap
 writeregC:
                 mvi a, 166q   ; 177566 tx data
                 cmp l
@@ -149,6 +155,9 @@ writeregC:
                 cmp l
                 jz write_tx_control
                 
+                mvi a, 376q   ; pdp-11 PS
+                cmp l
+                jz write_ps177776
                 ; rx? dunno
 
                 jmp jmp_trap
@@ -215,4 +224,15 @@ write_rx_control:
                 sta rx_control_reg
                 ret
 
+write_ps177776:
+                mov d, b
+                mov e, c
+                jmp _mtps_de
+
+read_ps177776:
+                ; same as mfps but without jump to store_dd8
+                lda rpsw
+                mov e, a
+                mvi d, 0
+                ret
 		.end
