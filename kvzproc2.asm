@@ -248,7 +248,7 @@ read_rx_data:
                 ret
 write_tx_data:
   ;;;;;
-  ;hlt ; for benchmark: k prohod 2581163
+  hlt ; for benchmark: k prohod 2557180
   ;;;;;
                 mov a, c
                 sta tx_data_reg
