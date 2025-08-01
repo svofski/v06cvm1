@@ -30,7 +30,6 @@
 #define STORE_C_TO_HL       call kvazwriteC
 #define STORE_A_TO_HL       mov c, a \ call kvazwriteC
 #define STORE_DE_TO_HL      call kvazwriteDEeven \ inx h
-#define STORE_E_TO_HL       call kvazwriteE
 
 #define STORE_BC_TO_HL_REVERSE  dcx h \ call kvazwriteBCeven
 #define STORE_DE_TO_HL_REVERSE  dcx h \ call kvazwriteDEeven
@@ -51,7 +50,6 @@
 #define STORE_C_TO_HL mov m, c
 #define STORE_A_TO_HL mov m, a
 #define STORE_DE_TO_HL mov m, e \ inx h \ mov m, d
-#define STORE_E_TO_HL  mov m, e
 #define STORE_BC_TO_HL_REVERSE mov m, b \ dcx h \ mov m, c
 #define STORE_DE_TO_HL_REVERSE mov m, d \ dcx h \ mov m, e
 
@@ -2297,16 +2295,6 @@ sdeha_reg:
         STORE_DE_TO_HL_REG
         ret
 
-_store_e_hl_addrmode:
-        lda vm1_addrmode
-        ora a
-        jz seha_reg
-        STORE_E_TO_HL
-        ret
-seha_reg:
-        STORE_E_TO_HL_REG
-        ret
-
 
 opc_swab: 
         xchg
@@ -2636,7 +2624,6 @@ opc_inc:
         call load_dd16
         dcx h
         inx d
-        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
 
         ; aluf NZV
@@ -3469,11 +3456,9 @@ opc_cmp:
         ; 02ssdd CMP ss, dd   src - dst -> flags
         xchg
         push h
-        ;push d
           call load_ss16
           mov b, d
           mov c, e        ; bc <- src
-        ;pop d
         pop h
 
         push b
@@ -3715,7 +3700,8 @@ opc_incb:
         xchg
         call load_dd8
         inr e
-        call _store_e_hl_addrmode
+        mov c, e
+        call _store_c_hl_addrmode
 
         ; aluf NZV
         lxi h, rpsw
@@ -3748,7 +3734,8 @@ opc_decb:
         xchg
         call load_dd8
         dcr e
-        call _store_e_hl_addrmode
+        mov c, e
+        call _store_c_hl_addrmode
 
         ; aluf NZV
         lxi h, rpsw
@@ -3785,8 +3772,8 @@ opc_negb:
         mov a, e
         cma
         inr a
-        mov e, a
-        call _store_e_hl_addrmode
+        mov c, a
+        call _store_c_hl_addrmode
 
         ; aluf NZVC
         lxi h, rpsw
@@ -3795,7 +3782,7 @@ opc_negb:
         mov m, a
 
         xra a 
-        ora e
+        ora c
         mvi a, PSW_Z
         jz $+5
         mvi a, PSW_C
@@ -3803,7 +3790,7 @@ opc_negb:
         mov m, a
 
         xra a
-        ora e
+        ora c
         mvi a, PSW_N
         jm $+4
         xra a
@@ -3812,7 +3799,7 @@ opc_negb:
 
         ; V flag dst == $80
         mvi a, $80
-        cmp e
+        cmp c
         rnz
         mvi a, PSW_V
         ora m
@@ -3829,18 +3816,19 @@ opc_adcb:
         rar             ; PSW_C -> host.C
         jnc adcb_no_cin
 
-        inr e           ; e = dst8 + cin (1)
-        call _store_e_hl_addrmode
+        mov c, e
+        inr c           ; e = dst8 + cin (1)
+        call _store_c_hl_addrmode
 
         xra a
-        ora e
+        ora c
         jnz adcb_no_cout
         ; cout if dst8 == 0
         mvi b, PSW_C
         jmp adcb_no_cin
 adcb_no_cout:
         mvi a, $80
-        cmp e
+        cmp c
         jnz adcb_no_cin
         ; V if dst8 == $80, sign change
         mvi b, PSW_V
@@ -3852,7 +3840,7 @@ adcb_no_cin:
         mov m, a
 
         xra a
-        ora e
+        ora c
         jnz _adcb_n
         mvi a, PSW_Z
         ora m
@@ -3860,7 +3848,7 @@ adcb_no_cin:
         ret
 _adcb_n:      
         xra a
-        ora e
+        ora c
         rp
         mvi a, PSW_N
         ora m
@@ -3878,17 +3866,18 @@ opc_sbcb:
         rar
         jnc adcb_no_cin ; do nothing, set flags like adcb
 
-        dcr e           ; e = dst8 - Cin
-        call _store_e_hl_addrmode
+        mov c, e
+        dcr c           ; e = dst8 - Cin
+        call _store_c_hl_addrmode
 
         mvi a, $ff      ; 00->ff -> Cout, V = 0
-        cmp e
+        cmp c
         jnz _sbcb_tv
         mvi b, PSW_C
         jmp adcb_no_cin
 _sbcb_tv: 
         rar             ; a=$7f
-        cmp e
+        cmp c
         jnz adcb_no_cin
         mvi b, PSW_V    ; dst $80->$7f, V = 1 (sign change)
         jmp adcb_no_cin

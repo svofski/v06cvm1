@@ -131,14 +131,6 @@ kvazwriteC:
                 pop d
                 ret
 
-                ; [hl] <- e
-kvazwriteE:
-                push b
-                mov c, e
-                call kvazwriteC
-                pop b
-                ret
-
 readregDE:
                 mvi a, 164q  ; 177564 tx control
                 cmp l
