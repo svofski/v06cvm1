@@ -24,7 +24,7 @@
 #ifdef WITH_KVAZ
 
 #define LOAD_DE_FROM_HL     call kvazreadDEeven
-#define LOAD_BC_FROM_HL     push d \ call kvazreadDEeven \ mov b, d \ mov c, e \ pop d \ inx h
+#define LOAD_BC_FROM_HL     push d \ call kvazreadDEeven \ mov b, d \ mov c, e \ pop d
 #define LOAD_E_FROM_HL      call kvazreadDE
 #define STORE_BC_TO_HL      call kvazwriteBCeven
 #define STORE_C_TO_HL       call kvazwriteC
@@ -2109,7 +2109,7 @@ stwmode6:
           push h ; reg addr
             lhld r7
             LOAD_BC_FROM_HL       ; bc <- guest[pc]
-            inx h
+            inx h \ inx h
             shld r7               ; r7 ++ 2
           pop h                   ; h = &reg
           LOAD_DE_FROM_HL_REG     ; de = reg (updated if r7)
@@ -2127,7 +2127,7 @@ stwmode7:
           push h ; reg addr
             lhld r7
             LOAD_BC_FROM_HL       ; bc <- guest[pc]
-            inx h
+            inx h \ inx h
             shld r7               ; r7 ++ 2
           pop h                   ; h = &reg
           LOAD_DE_FROM_HL_REG     ; de = reg (updated if r7)
@@ -2211,7 +2211,7 @@ stbmode6:
           push h ; reg addr
             lhld r7
             LOAD_BC_FROM_HL       ; bc <- guest[pc]
-            inx h
+            inx h \ inx h
             shld r7               ; r7 ++ 2
           pop h                   ; h = &reg
           LOAD_DE_FROM_HL_REG     ; de = reg (updated if r7)
@@ -2229,7 +2229,7 @@ stbmode7:
           push h ; reg addr
             lhld r7
             LOAD_BC_FROM_HL       ; bc <- guest[pc] = offset/addr
-            inx h
+            inx h \ inx h
             shld r7               ; r7 ++ 2
           pop h                   ; h = &reg
           LOAD_DE_FROM_HL_REG     ; de = reg (updated if r7)
@@ -2346,7 +2346,7 @@ opc_rts:
         ; R = [r6]
         lhld r6
         LOAD_BC_FROM_HL ; bc = [r6]
-        inx h
+        inx h \ inx h
         shld r6   ; r6 += 2
         xchg
         STORE_BC_TO_HL_REG_REVERSE  ; R = bc
