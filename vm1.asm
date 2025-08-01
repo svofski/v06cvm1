@@ -24,7 +24,7 @@
 #ifdef WITH_KVAZ
 
 #define LOAD_DE_FROM_HL     call kvazreadDEeven
-#define LOAD_BC_FROM_HL     push d \ call kvazreadDEeven \ mov b, d \ mov c, e \ pop d
+#define LOAD_BC_FROM_HL     call kvazreadBCeven
 #define LOAD_E_FROM_HL      call kvazreadDE
 #define STORE_BC_TO_HL      call kvazwriteBCeven
 #define STORE_C_TO_HL       call kvazwriteC
@@ -193,15 +193,18 @@ tm1_memcpy:
         call vm1_reset
         lxi h, test_mov1_pgm
         shld r7
+#ifndef TESTBENCH
+tm1_loop_end:
+#endif
 tm1_loop:
         call vm1_exec
 
         ; process interruptsies
-        lxi h, intflg
-        xra a
-        ora m
+        lda intflg
+        ora a
         jz tm1_loop_end
 
+        lxi h, intflg
         mvi a, RQ_EMT
         ana m
         jz vm1int_emt_not
@@ -259,13 +262,14 @@ tm1_loop_enter_interrupt:
         lxi d, tm1_loop_end
         push d
         jmp opx_interrupt
+#ifdef TESTBENCH        
 tm1_loop_end:
         lhld vm1_opcode
         mov a, h
         ora l
         jnz tm1_loop
         hlt
-
+#endif
 
         ;ALIGN_16
         .org 1000q
@@ -2345,7 +2349,9 @@ opc_rts:
         
         ; R = [r6]
         lhld r6
+        push d
         LOAD_BC_FROM_HL ; bc = [r6]
+        pop d
         inx h \ inx h
         shld r6   ; r6 += 2
         xchg

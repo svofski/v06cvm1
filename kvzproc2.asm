@@ -54,6 +54,42 @@ kvazreadDE:
                 pop h
                 ret
 
+kvazreadBCeven:
+                mvi a, $fe
+                ana l
+                mov l, a
+
+;Input: address - HL
+;Output: data - BC
+; clobbers DE!!!
+kvazreadBC:
+                ;inr h
+                ;jz readregDE
+                ;dcr h
+                mvi a, $ff
+                cmp h
+                jz readregDE
+
+                ;push d
+                  push h
+                    xchg                    ;DE=address
+                    lxi h,0
+                    dad sp                  ;HL=old SP
+                    mvi a,kvazbank
+                    di
+                    out kvazport
+                    xchg                    ;HL=address, DE=old SP
+                    sphl                    ;SP=address
+                    xchg                    ;HL=old SP
+                    pop b                   ;BC=data
+                    xra a
+                    out kvazport
+                    sphl                    ;SP=old SP
+                    ei
+                  pop h
+                ;pop d
+                ret
+
 kvazwriteBCeven:
                 mvi a, $fe
                 ana l
@@ -212,7 +248,7 @@ read_rx_data:
                 ret
 write_tx_data:
   ;;;;;
-  ;hlt ; for benchmark: k prohod 2596691
+  ;hlt ; for benchmark: k prohod 2581163
   ;;;;;
                 mov a, c
                 sta tx_data_reg
