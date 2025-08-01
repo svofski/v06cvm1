@@ -4116,16 +4116,16 @@ test_loadw_7_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
         call setreg \ .dw r7 \ .dw $1210
-        call setmem \ .dw $1210 \ .dw $0102 ; [1210] = 0102_big
-        call setmem \ .dw 0102h+01234h \ .dw $1236
-        call setmem \ .dw $1236 \ .dw $beef
+        call setmem \ .dw $1210 \ .dw $0102             ; im16 := $0102
+        call setmem \ .dw 0102h+01234h \ .dw $1236      ; [r3+im16] <- $1236
+        call setmem \ .dw $1236 \ .dw $beef             ; [$1236] <- $beef
         
         lxi h, 007373q
         call load_dd16
         call assert_de_equals \ .dw $beef
         call assert_reg_equals \ .dw r7 \ .dw $1212 ; check pc == pc + 2
 
-        call setreg \ .dw r7, $1210
+        call setreg \ .dw r7, $1210                     ; reset r7 <- $1210
         lxi h, 007373q
         call load_ss16
         call assert_de_equals \ .dw $beef
@@ -4351,23 +4351,26 @@ test_loadb_7:
 test_loadb_7_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
-        call setreg \ .dw r7 \ .dw $1210
-        call setmem \ .dw $1210 \ .dw $0102             ; offset 1
-        call setmem \ .dw $1212 \ .dw $0105             ; offset 2
-        call setmem \ .dw 0102h+01234h \ .dw $1236      ; -> be
-        call setmem \ .dw 0105h+01234h \ .dw $1237      ; -> ef
+        call setreg \ .dw r7 \ .dw $1210                ;           
+        call setmem \ .dw $1210 \ .dw $0102             ; im16_1 := $0102
+        call setmem \ .dw $1212 \ .dw $0104             ; im16_2 := $0105
+        call setmem \ .dw 0102h+01234h \ .dw $1236      ; [r3 + im16_1] <- $1236 == & "ef"
+        call setmem \ .dw 0104h+01234h \ .dw $1237      ; [r3 + im16_2] <- $1237 == & "be"
         call setmem \ .dw $1236 \ .dw $beef
+
         
-        ; as dst
+        ; as dst, [r3 + $102] = $1236, [$1236] = $ef, r7 = $1212
         lxi h, 007373q
         call load_dd8
-        call assert_e_equals \ .dw $ef
+        call assert_e_equals \ .dw $ef      ; this one ok
         call assert_reg_equals \ .dw r7 \ .dw $1212 ; check pc == pc + 2
 
+        ; [$1234 + $105] = $1237, [$1237] = $be, r7 = $1214
         lxi h, 007373q
         call load_dd8
-        call assert_e_equals \ .dw $be
+        call assert_e_equals \ .dw $be      ; this reads 0
         call assert_reg_equals \ .dw r7 \ .dw $1214 ; check pc == pc + 2
+
 
         ; as src
         call setreg \ .dw r3 \ .dw $1234
