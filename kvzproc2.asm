@@ -211,6 +211,9 @@ read_rx_data:
                 mvi d, 0
                 ret
 write_tx_data:
+  ;;;;;
+  ;hlt ; for benchmark: k prohod 2596691
+  ;;;;;
                 mov a, c
                 sta tx_data_reg
                 sta txstrbuf

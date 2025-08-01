@@ -8,8 +8,8 @@ TESTS="SERIOUSLY"
 export WITH_KVAZ=-DWITH_KVAZ=1
 export TESTBENCH=-DTESTBENCH=1
 
-export ROM=-DBASIC=1
-#export ROM=-DTEST_791401=1
+#export ROM=-DBASIC=1
+export ROM=-DTEST_791401=1
 #export ROM=-DTEST_GKAAA0=1
 
 ./TASM.EXE -b -85 $WITH_KVAZ $TESTBENCH $ROM vm1.asm vm1.com |& tee tasm.log

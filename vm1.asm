@@ -29,7 +29,7 @@
 #define STORE_BC_TO_HL      call kvazwriteBCeven
 #define STORE_C_TO_HL       call kvazwriteC
 #define STORE_A_TO_HL       mov c, a \ call kvazwriteC
-#define STORE_DE_TO_HL      call kvazwriteDEeven \ inx h
+#define STORE_DE_TO_HL      call kvazwriteDEeven
 
 #define STORE_BC_TO_HL_REVERSE  dcx h \ call kvazwriteBCeven
 #define STORE_DE_TO_HL_REVERSE  dcx h \ call kvazwriteDEeven
@@ -2660,9 +2660,7 @@ inc_testz:
 opc_dec:   
         xchg
         call load_dd16
-        ;dcx h
         dcx d
-        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
 
         ; aluf NZV
@@ -2893,7 +2891,6 @@ opc_ror:
         mov a, e
         rar
         mov e, a
-        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
 
         ; aluf NZVC
@@ -3008,7 +3005,6 @@ opc_asr:
         mov a, d    ; put sign bit in place
         ora b
         mov d, a
-        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
         jmp ror_aluf
 
@@ -3022,7 +3018,6 @@ opc_asl:
         dad h
 
         xchg
-        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
         jmp rol_aluf
 
