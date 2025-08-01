@@ -26,7 +26,7 @@
 #define LOAD_DE_FROM_HL     call kvazreadDEeven
 #define LOAD_BC_FROM_HL     push d \ call kvazreadDEeven \ mov b, d \ mov c, e \ pop d \ inx h
 #define LOAD_E_FROM_HL      call kvazreadDE
-#define STORE_BC_TO_HL      call kvazwriteBCeven \ inx h
+#define STORE_BC_TO_HL      call kvazwriteBCeven
 #define STORE_C_TO_HL       call kvazwriteC
 #define STORE_A_TO_HL       mov c, a \ call kvazwriteC
 #define STORE_DE_TO_HL      call kvazwriteDEeven \ inx h
@@ -2067,7 +2067,7 @@ stwmode1: ; *reg16[dst] = BC
 stwmode2: ; *reg16[dst] = BC, reg16[dst] += 2
         xchg                  ; hl = reg16[dst]
         STORE_BC_TO_HL
-        inx h
+        inx h \ inx h
         xchg                  ; hl = &reg16[dst], de = reg16[dst] + 2
         STORE_DE_TO_HL_REG
         ret
