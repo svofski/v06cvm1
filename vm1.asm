@@ -1,3 +1,5 @@
+#define ROM_START $c000
+
         .org $100
 
         ; test load op16
@@ -3713,7 +3715,6 @@ opc_incb:
         xchg
         call load_dd8
         inr e
-        ;STORE_E_TO_HL
         call _store_e_hl_addrmode
 
         ; aluf NZV
