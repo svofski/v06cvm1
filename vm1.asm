@@ -2321,20 +2321,17 @@ swab_aluf:
 
         xra a
         ora c
+        jm _swab_aluf_n
+        rnz
+_swab_aluf_z:
         mvi a, PSW_Z
-        jz $+4
-        xra a
         ora m
         mov m, a
-
-        xra a
-        ora c
+        ret
+_swab_aluf_n:
         mvi a, PSW_N
-        jm $+4
-        xra a
         ora m
         mov m, a
-
         ret
         
 opc_rts:  
@@ -3958,27 +3955,27 @@ movb_setaluf_and_store:
         ana m
         mov m, a
 
-        mov a, c
-        ora a
-        mvi a, PSW_Z
-        jz $+4
         xra a
-        ora m
-        mov m, a
-
-        mvi b, -1 ; sign extend = -1
-        mov a, c
-        add a
-        mvi a, PSW_N
-        jc $+5
-        xra a
-        mov b, a  ; sign extend = 0
-        ora m
-        mov m, a
-
+        ora c
+        jm _movb_setaluf_n
+        jz _movb_setaluf_z
         pop h
-        call store_dd8
-        ret
+        jmp store_dd8
+
+_movb_setaluf_n:
+        mvi b, -1 ; sign extend = -1
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        pop h
+        jmp store_dd8
+_movb_setaluf_z:
+        mvi b, 0
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        pop h
+        jmp store_dd8
 
 
 #ifdef TEST_ADDRMODES
