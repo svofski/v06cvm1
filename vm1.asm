@@ -23,7 +23,7 @@
 
 #ifdef WITH_KVAZ
 
-#define LOAD_DE_FROM_HL     call kvazreadDEeven \ inx h
+#define LOAD_DE_FROM_HL     call kvazreadDEeven
 #define LOAD_BC_FROM_HL     push d \ call kvazreadDEeven \ mov b, d \ mov c, e \ pop d \ inx h
 #define LOAD_E_FROM_HL      call kvazreadDE
 #define STORE_BC_TO_HL      call kvazwriteBCeven \ inx h
@@ -1895,7 +1895,7 @@ ldwmode6:
         push d                ; &reg
           lhld r7
           LOAD_DE_FROM_HL     ; de <- guest[r7] == im16
-          inx h 
+          inx h \ inx h
           shld r7             ; r7 += 2
         pop h                 ; hl = &reg
         LOAD_BC_FROM_HL_REG   ; bc <- reg (updated if r7)
@@ -1912,7 +1912,7 @@ ldwmode7:
         push d                ; &reg
           lhld r7
           LOAD_DE_FROM_HL     ; de <- guest[r7] == im16
-          inx h 
+          inx h \ inx h
           shld r7             ; r7 += 2
         pop h                 ; hl = &reg
         LOAD_BC_FROM_HL_REG   ; bc <- reg (updated if r7)
@@ -2031,7 +2031,7 @@ ldbmode6:
         push d
           lhld r7
           LOAD_DE_FROM_HL         ; hidden inx h
-          inx h                   ; = pc + 2
+          inx h \ inx h           ; = pc + 2
           shld r7
         pop h
         LOAD_BC_FROM_HL_REG
@@ -2299,7 +2299,7 @@ sdeha_reg:
 opc_swab: 
         xchg
         call load_dd16   ; load DD -> de
-        dcx h            ; hl -> op, vm1_addrmode selects addr space
+        ;dcx h            ; hl -> op, vm1_addrmode selects addr space
         mov c, d
         mov b, e
 
@@ -2356,14 +2356,14 @@ opc_rtt:
 opc_rti:  
         lhld r6
         LOAD_DE_FROM_HL   ; pop pc -> bc
-        inx h             ; sp += 2
+        inx h \ inx h     ; sp += 2
         ; --
         xchg
         shld r7
         xchg
         ; -- 
         LOAD_DE_FROM_HL   ; pop psw -> de
-        inx h             ; sp += 2
+        inx h \ inx h     ; sp += 2
         shld r6           ; save sp
         ; -- preserve halt flag
         lda rpsw+1
@@ -2485,7 +2485,7 @@ opc_jmp:
         jz jmp_trap
         xchg
         call load_dd16  
-        dcx h             ; ignore the operand, use its addr as new pc value
+        ;dcx h             ; ignore the operand, use its addr as new pc value
         shld r7
         ret
 jmp_trap:
@@ -2508,7 +2508,7 @@ opc_jsr:
         xchg
         push h
           call load_dd16
-          dcx h ; h = new address
+          ;dcx h ; h = new address
           xchg  ; de = EA
         pop h ; hl = opcode
         push d ; save EA
@@ -2536,7 +2536,7 @@ opc_jsr:
 opc_clr:   
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
         lxi b, 0
         ;STORE_BC_TO_HL
         call _store_bc_hl_addrmode
@@ -2558,7 +2558,7 @@ opc_clrb:
 opc_com:   
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
         mov a, d
         cma
         mov b, a
@@ -2622,7 +2622,7 @@ comb_nosetz:
 opc_inc:   
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
         inx d
         call _store_de_hl_addrmode
 
@@ -2661,7 +2661,7 @@ inc_testz:
 opc_dec:   
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
         dcx d
         ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
@@ -2699,7 +2699,7 @@ dec_z:  mvi a, PSW_Z
 opc_neg:   
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
 
         mov a, d
         cma
@@ -2750,7 +2750,7 @@ opc_adc:
         ; 0055dd adc dd: dst <- dst + c
         xchg
         call load_dd16
-        dcx h           ; hl = &dst, de = dst
+        ;dcx h           ; hl = &dst, de = dst
 
         mvi b, 0
         lda rpsw
@@ -2800,7 +2800,7 @@ opc_sbc:
         ; 0056dd: sbc dd: dst <- dst - C
         xchg
         call load_dd16
-        dcx h           ; hl = &dst, de = dst
+        ;dcx h           ; hl = &dst, de = dst
 
         mvi b, 0
 
@@ -2880,7 +2880,7 @@ opc_ror:
         ; 0060dd ROR dd
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
 
         mov c, e    ; remember lsb for carry aluf
         
@@ -2931,7 +2931,7 @@ opc_rol:
         ; 0061dd ROL dd
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
 
 
         mov b, d ; remember msb
@@ -2993,7 +2993,7 @@ opc_asr:
         ; 0062dd ASR dd
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
         mov c, e    ; remember lsb for ror_aluf
         mvi a, $80
         ana d       ; remember msb for sign extend
@@ -3017,7 +3017,7 @@ opc_asl:
         ; 0063dd
         xchg
         call load_dd16
-        dcx h
+        ;dcx h
         mov b, d ; remember msb for rol_aluf
         xchg
         dad h
@@ -3156,7 +3156,7 @@ opc_mark:
           dad d       ; i = hl = r7 + 2 * nn
 
           LOAD_DE_FROM_HL
-          inx h       ; hl = r7 + 2 * nn + 2
+          inx h \ inx h ; hl = r7 + 2 * nn + 2
           shld r6     ; R6 = ...
           xchg
           shld r5     ; R5 = mem[i]
@@ -3257,7 +3257,7 @@ opc_bic:
         ana d
         mov b, a          ; bc <- dst & ~src
 
-        dcx h
+        ;dcx h
         call _store_bc_hl_addrmode
         jmp bit_aluf
 
@@ -3279,7 +3279,7 @@ opc_bis:
         ora d
         mov b, a
 
-        dcx h
+        ;dcx h
         call _store_bc_hl_addrmode
         jmp bit_aluf
 
@@ -3357,7 +3357,7 @@ opc_add:
         pop h
         push b
           call load_dd16
-          dcx h
+          ;dcx h
         pop b
         ; bc = src, de = dst, hl = &dst
         
@@ -3419,7 +3419,7 @@ opc_sub:
         pop h
         push b
           call load_dd16
-          dcx h
+          ;dcx h
         pop b
         ; bc = src, de = dst, hl = &dst
         
@@ -3595,7 +3595,7 @@ opc_xor:
         xra e
         mov c, a
 
-        dcx h
+        ;dcx h
         call _store_bc_hl_addrmode
         jmp bit_aluf
 
@@ -3688,7 +3688,7 @@ opx_interrupt:
         xchg
         shld r7
         xchg
-        inx h
+        inx h \ inx h
         LOAD_DE_FROM_HL
         mov l, e
         mvi h, 0
