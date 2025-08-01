@@ -1,5 +1,5 @@
 uint16_t vm1_exec_addr = 0x4013;
-uint16_t vm1_opcode_addr = 0x4029;
+uint16_t vm1_opcode_addr = 0x402A;
 uint16_t vm1_regfile_addr = 0x4400;
 #pragma once
 uint16_t opc_addrs[77] = {

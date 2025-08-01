@@ -1347,7 +1347,7 @@ vm1_reset_l1:
 vm1_exec:
         lhld r7
         LOAD_DE_FROM_HL ; de = opcode, hl += 1
-        inx h
+        inx h \ inx h
         shld r7         ; r7 += 2
         mov h, d
         mov l, e        ; keep opcode in de, copy to hl
