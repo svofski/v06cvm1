@@ -2599,7 +2599,6 @@ opc_comb:
         call load_dd8
         mov a, e
         cma
-        ;STORE_A_TO_HL
         mov c, a
         call _store_c_hl_addrmode
         ; aluf NZ, V=0, C=1
@@ -2636,33 +2635,33 @@ opc_inc:
         mvi a, ~(PSW_N | PSW_Z | PSW_V)
         ana m
         mov m, a
-        
+
         xra a
         ora d
-        jp inc_testz
-        ;
+        jm _inc_n
+        ora e
+        rnz
+_inc_z:
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+_inc_n:
         mvi a, PSW_N
         ora m
         mov m, a
-        ; V flag dst == 0100000
-        mov a, e
-        ora a
-        rnz
+        ; V = dst == $8000
         mvi a, $80
         cmp d
+        rnz
+        xra a
+        ora e
         rnz
         mvi a, PSW_V
         ora m
         mov m, a
         ret
-inc_testz:
-        ora e
-        rnz
-        mvi a, PSW_Z
-        ora m
-        mov m, a
-        ret
-
+        
 opc_dec:   
         xchg
         call load_dd16
@@ -2677,32 +2676,34 @@ opc_dec:
 
         xra a
         ora d
-        jm dec_n
+        jm _dec_n
         ora e
-        jz dec_z
+        jz _dec_z
+
         inr e
         rnz
         mvi a, $7f
         cmp d
         rnz
-        mvi a, PSW_V ; V flag dst == 077777
-        ora m
-        mov m, a
-        ret
-dec_n:  mvi a, PSW_N
-        ora m
-        mov m, a
-        ret
-dec_z:  mvi a, PSW_Z
+        mvi a, PSW_V ; V = dst == $7fff
         ora m
         mov m, a
         ret
 
+_dec_z:
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+_dec_n:
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        ret
 
 opc_neg:   
         xchg
         call load_dd16
-        ;dcx h
 
         mov a, d
         cma
@@ -2720,23 +2721,28 @@ opc_neg:
         ana m
         mov m, a
 
-        mov a, d
-        ora e
-        mvi a, PSW_Z
-        jz $+5
-        mvi a, PSW_C
-        ora m
-        mov m, a
 
         xra a
         ora d
-        mvi a, PSW_N
-        jm $+4
-        xra a
+        jm _neg_n
+        ora e
+        jz _neg_z
+        ; positive nz -> C
+        mvi a, PSW_C
+        ora m
+        mov m, a
+        ret
+_neg_z:
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ret
+_neg_n: ; N, not Z -> C --- but maybe also V
+        mvi a, PSW_N | PSW_C
         ora m
         mov m, a
 
-        ; V flag dst == 0100000
+        ; V = dst == 0100000 ($8000)
         xra a
         ora e
         rnz
@@ -2746,8 +2752,8 @@ opc_neg:
         mvi a, PSW_V
         ora m
         mov m, a
-
         ret
+
 
 opc_adc:   
         ; 0055dd adc dd: dst <- dst + c
@@ -2883,7 +2889,6 @@ opc_ror:
         ; 0060dd ROR dd
         xchg
         call load_dd16
-        ;dcx h
 
         mov c, e    ; remember lsb for carry aluf
         
@@ -2908,11 +2913,9 @@ ror_aluf:
         ; C
         mov a, c
         rar           ; saved lsb of source -- test low bit
-        mvi a, PSW_C
-        jc $+4
-        xra a
-        ora m
-        mov m, a
+        mvi c, 0      ; temporary flags
+        jnc rol_nzv
+        mvi c, PSW_C
         jmp rol_nzv
 
 opc_rol:   
@@ -2933,11 +2936,8 @@ opc_rol:
         ; 0061dd ROL dd
         xchg
         call load_dd16
-        ;dcx h
-
 
         mov b, d ; remember msb
-
         xchg
         dad h
 
@@ -2956,37 +2956,41 @@ rol_aluf:
         ana m
         mov m, a
         ; C
+        mvi c, 0    ; temporary flags
         xra a
         ora b ; saved msb of source -- test high bit
-        mvi a, PSW_C
-        jm $+4
-        xra a
-        ora m
-        mov m, a
+        jp rol_nzv
+        mvi c, PSW_C
+
         ; set NZV flags after rotation
         ; hl = &rpsw, PSW_C already set, de = result
 rol_nzv:  
-        ; Z
-        mov a, d
-        ora e
-        mvi a, PSW_Z
-        jz $+4
-        xra a
-        ora m
-        mov m, a
-        ; N
         xra a
         ora d
-        mvi a, PSW_N
-        jm $+4
+        jm _rol_n
+        ora e
+        jz _rol_z
+        ; N=0, Z=0, C=?
         xra a
+        ora c
+        jnz _rol_v     ; N=0, C=1 -> V
+        ret
+_rol_n:
+        mvi a, PSW_N 
+        ora c
+        jpo _rol_v    ; parity odd if N != C: -> V
         ora m
         mov m, a
-        ; V = N != C
-        mvi a, PSW_N | PSW_C
-        ana m
-        rpe     ; parity even ~ N == C
-        mvi a, PSW_V
+        ret           ; only N
+_rol_z:
+        mvi a, PSW_Z
+        ora c
+        jpe _rol_v    ; parity even if N=0, C=1, Z=1 -> V
+        ora m
+        mov m, a
+        ret
+_rol_v:
+        ori PSW_V
         ora m
         mov m, a
         ret
@@ -2995,7 +2999,7 @@ opc_asr:
         ; 0062dd ASR dd
         xchg
         call load_dd16
-        ;dcx h
+
         mov c, e    ; remember lsb for ror_aluf
         mvi a, $80
         ana d       ; remember msb for sign extend
@@ -3018,7 +3022,7 @@ opc_asl:
         ; 0063dd
         xchg
         call load_dd16
-        ;dcx h
+
         mov b, d ; remember msb for rol_aluf
         xchg
         dad h
@@ -3038,7 +3042,6 @@ opc_rorb:
         rar
         mov d, a        ; d is rotated, for flags
 
-        ;STORE_A_TO_HL
         mov c, a
         call _store_c_hl_addrmode
         
@@ -3049,14 +3052,13 @@ rorb_aluf:
         ana m
         mov m, a
         ; C
+        mvi c, 0
         mov a, e ; original
         rar
-        mvi a, PSW_C
-        jc $+4
-        xra a
-        ora m
-        mov m, a
+        jnc rolb_znv
+        mvi c, PSW_C
         jmp rolb_znv
+
 opc_rolb:
         ; 1061dd ROLB dd
         xchg
@@ -3068,7 +3070,6 @@ opc_rolb:
         ral
         mov d, a        ; d is rotated value, for flags
 
-        ;STORE_A_TO_HL
         mov c, a
         call _store_c_hl_addrmode
 
@@ -3079,41 +3080,44 @@ rolb_aluf:
         ana m
         mov m, a
         ; C
-        mov a, e ; original
+        mvi c, 0  ; temp flags
+        mov a, e  ; original
         ral
-        mvi a, PSW_C
-        jc $+4
-        xra a
-        ora m
-        mov m, a
+        jnc rolb_znv
+        mvi c, PSW_C
 
         ; h = &rpsw, PSW_C already set
         ; d = byte value
 rolb_znv:
-        ; Z
-        mov a, d
-        ora a
-        mvi a, PSW_Z
-        jz $+4
-        xra a
-        ora m
-        mov m, a
-        ; N
         xra a
         ora d
-        mvi a, PSW_N
-        jm $+4
+        jm _rolb_n
+        jz _rolb_z
+        ; N=0, Z=0, C=?
         xra a
-        ora m
-        mov m, a
-        ; V = N != C
-        mvi a, PSW_N | PSW_C
-        ana m
-        rpe ; parity even ~ N == C
-        mvi a, PSW_V
+        ora c
+        jnz _rolb_v
+        ret
+_rolb_n:
+        mvi a, PSW_N
+        ora c
+        jpo _rolb_v   ; N != C: -> V
         ora m
         mov m, a
         ret
+_rolb_z:
+        mvi a, PSW_Z
+        ora c
+        jpe _rolb_v   ; N=0, C=1, Z=1 -> V
+        ora m
+        mov m, a
+        ret
+_rolb_v:
+        ori PSW_V
+        ora m
+        mov m, a
+        ret
+
 opc_asrb:
         ; 1062dd ASRB dd
         xchg
@@ -3125,7 +3129,6 @@ opc_asrb:
         rar
         ora d     ; asr a
         mov d, a  ; d is rotated, for flags
-        ;STORE_A_TO_HL
         mov c, a
         call _store_c_hl_addrmode
 
@@ -3137,7 +3140,6 @@ opc_aslb:
         mov a, e
         add a
         mov d, a ; for flags
-        ;STORE_A_TO_HL
         mov c, a
         call _store_c_hl_addrmode
 
@@ -3188,12 +3190,12 @@ opc_sxt:
 
         mov a, b
         ora c
+        xchg
+        jnz store_dd16
+        xchg
         mvi a, PSW_Z
-        jz $+4
-        xra a
         ora m
         mov m, a
-
         xchg
         jmp store_dd16
 
@@ -3257,7 +3259,6 @@ opc_bic:
         ana d
         mov b, a          ; bc <- dst & ~src
 
-        ;dcx h
         call _store_bc_hl_addrmode
         jmp bit_aluf
 
@@ -3279,7 +3280,6 @@ opc_bis:
         ora d
         mov b, a
 
-        ;dcx h
         call _store_bc_hl_addrmode
         jmp bit_aluf
 
@@ -3357,7 +3357,6 @@ opc_add:
         pop h
         push b
           call load_dd16
-          ;dcx h
         pop b
         ; bc = src, de = dst, hl = &dst
         
@@ -3371,12 +3370,14 @@ opc_add:
           mvi c, PSW_C
           ; overflow flag check: sign(src) == sign(dst) && sign(dst) != sign(result) 
           ;                      sign(b) == sign(d) && sign(d) != sign(h) 
-          mvi a, $80
-          ana b
+          ;mvi a, $80
+          ;ana b
+          mov a, b
           xra d       ; + --> sign(src) == sign(dst)
           jm _add_no_v
-          mvi a, $80
-          ana d
+          ;mvi a, $80
+          ;ana d
+          mov a, d
           xra h       ; - --> !=
           jp _add_no_v
           mvi a, PSW_V
@@ -3386,15 +3387,14 @@ _add_no_v:
 
           xra a
           ora h
-          jp _add_maybe_z
-          mvi a, PSW_N
-          ora c
-          mov c, a
-          jmp _add_flags_done
-_add_maybe_z:
+          jm _add_n
           ora l
           jnz _add_flags_done
           mvi a, PSW_Z
+          ora c
+          mov c, a
+          jmp _add_flags_done
+_add_n:   mvi a, PSW_N
           ora c
           mov c, a
 _add_flags_done:
@@ -3601,14 +3601,16 @@ opc_xor:
 
 opc_sob:
         ; 077Rnn opcode in de, luckily no flags affected
-        mov h, d
-        mov l, e
-        dad h
-        dad h
-        mvi a, 7          ; a = R
-        ana h             
+        ; d d d d_d d d D E E e e_e e e e
+        mov a, d    ; 8 + 4 + 8 + 8 + 8
+        rar
+        mov a, e
         ral
-        mov l, a          ; l = 2*R
+        ral
+        ral
+        ral
+        ani $e
+        mov l, a      ; 8+4+8+4+4+4+4+8+8=52
         mvi h, regfile >> 8 
         LOAD_BC_FROM_HL_REG
         dcx b
