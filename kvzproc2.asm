@@ -211,7 +211,6 @@ read_rx_data:
                 mvi d, 0
                 ret
 write_tx_data:
-  hlt
                 mov a, c
                 sta tx_data_reg
                 sta txstrbuf

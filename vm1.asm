@@ -1801,6 +1801,7 @@ load16:
 ldwmode0:
         xchg
         LOAD_DE_FROM_HL_REG
+        dcx h
         ret
         
         .org load16 + 32
@@ -2536,9 +2537,7 @@ opc_jsr:
 opc_clr:   
         xchg
         call load_dd16
-        ;dcx h
         lxi b, 0
-        ;STORE_BC_TO_HL
         call _store_bc_hl_addrmode
 clr_aluf_and_ret:
         lxi h, rpsw
