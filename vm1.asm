@@ -2585,17 +2585,17 @@ opc_com:
         ori PSW_C
         mov m, a
 
-        mov a, b
+        xra a
+        ora b
+        jm _com_n
         ora c
-        jnz com_nosetz
+        rnz
+_com_z:
         mvi a, PSW_Z
         ora m
         mov m, a
         ret
-com_nosetz:
-        xra a
-        ora b
-        rp
+_com_n:
         mvi a, PSW_N
         ora m
         mov m, a
@@ -2618,13 +2618,14 @@ opc_comb:
 
         xra a
         ora c
-        jnz comb_nosetz
+        jm _comb_n
+        rnz
+_comb_z:
         mvi a, PSW_Z
         ora m
         mov m, a
         ret
-comb_nosetz:
-        rp
+_comb_n:
         mvi a, PSW_N
         ora m
         mov m, a
