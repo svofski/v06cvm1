@@ -1801,6 +1801,7 @@ load16:
 ldwmode0:
         xchg
         LOAD_DE_FROM_HL_REG
+        dcx h
         ret
         
         .org load16 + 32
