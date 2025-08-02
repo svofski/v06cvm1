@@ -1352,14 +1352,16 @@ vm1_exec:
         LOAD_DE_FROM_HL ; de = opcode, hl += 1
         inx h \ inx h
         shld r7         ; r7 += 2
-        mov h, d
-        mov l, e        ; keep opcode in de, copy to hl
+
+        xchg
         shld vm1_opcode
-        mov a, h
-        ani $f0         ; sel by upper 4 bits
+        xchg            ; opcode must be in de
+        mvi a, $f0
+        ana d
         mov l, a
         mvi h, vm1_opcode1_tbl >> 8
         pchl
+
 
 vm1_opcode:     .dw 0
 vm1_addrmode:   .db 0
@@ -3937,24 +3939,26 @@ mov_setaluf_and_store:
         ana m
         mov m, a
 
-        mov a, b
-        ora c
-        mvi a, PSW_Z
-        jz $+4
-        xra a
-        ora m
-        mov m, a
-
         xra a
         ora b
-        mvi a, PSW_N
-        jm $+4
-        xra a
-        ora m
-        mov m, a
-
+        jm _mov_setaluf_n
+        ora c
+        jz _mov_setaluf_z
         pop h
         jmp store_dd16
+_mov_setaluf_n:
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        pop h
+        jmp store_dd16
+_mov_setaluf_z:
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        pop h
+        jmp store_dd16
+
 
 movb_setaluf_and_store:
         ; aluf N, Z, V = 0  -- if dst is reg, sign extend
