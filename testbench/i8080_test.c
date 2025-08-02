@@ -606,9 +606,15 @@ int main(int argc, char **argv) {
         filename = argv[1];
     }
 
+#ifdef TEST_791401
     load_file("bktests/791401", 0, 1);  // load bk test into guest ram
-    //load_file("bktests/013-basic.bin", 0140000, 1);  // load bk test into guest ram
-    //load_file("bktests/GKAAA0", 0, 1);  // load GKAAA0 at address 0, start 0200
+#endif
+#ifdef BASIC
+    load_file("bktests/013-basic.bin", 0140000, 1);  // load bk test into guest ram
+#endif
+#ifdef TEST_GKAAA0
+    load_file("bktests/GKAAA0", 0, 1);  // load GKAAA0 at address 0, start 0200
+#endif
     execute_test(filename, 0);
     return 0;
 }

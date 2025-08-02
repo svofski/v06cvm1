@@ -63,9 +63,9 @@ kvazwriteBC:
                 mvi a, $ff
                 cmp h
                 jz writeregBC           ; --> register write
-                mvi a, (ROM_START >> 8) - 1
-                cmp h
-                jc jmp_trap             ; --> write to rom, trap to 4
+                ;mvi a, (ROM_START >> 8) - 1
+                ;cmp h
+                ;jc jmp_trap             ; --> write to rom, trap to 4
 
                 push d
                   xchg                    ;DE=address
@@ -211,7 +211,6 @@ read_rx_data:
                 mvi d, 0
                 ret
 write_tx_data:
-  hlt
                 mov a, c
                 sta tx_data_reg
                 sta txstrbuf
