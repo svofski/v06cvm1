@@ -62,32 +62,42 @@ attr_mode_t attrmode = ATTR_HOST;
 
 void attr_host()
 {
+#ifdef COLOR
     fprintf(stderr, "\033[0m");
+#endif
 }
 
 void attr_guest()
 {
+#ifdef COLOR
     fprintf(stderr, "\033[93m"); // light yellow
+#endif
 }
 
 void attr_reg()
 {
+#ifdef COLOR
     fprintf(stderr, "\033[96m"); // light cyan
+#endif
 }
 
 void attr_psw()
 {
+#ifdef COLOR
     fprintf(stderr, "\033[97m"); // light blue
+#endif
 }
 
 void attr_diff(int differ)
 {
+#ifdef COLOR
     if (differ) {
         fprintf(stderr, "\033[48;5;94m");
     }
     else {
         fprintf(stderr, "\033[49m");
     }
+#endif
 }
 
 extern uint16_t DisassembleInstruction(const uint16_t* pMemory, uint16_t addr, 

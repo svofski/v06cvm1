@@ -1,5 +1,3 @@
-#define ROM_START $c000
-
         .org $100
 
         ; test load op16
@@ -30,6 +28,7 @@
 #define STORE_C_TO_HL       call kvazwriteC
 #define STORE_A_TO_HL       mov c, a \ call kvazwriteC
 #define STORE_DE_TO_HL      call kvazwriteDEeven \ inx h
+#define STORE_E_TO_HL       call kvazwriteE
 
 #define STORE_BC_TO_HL_REVERSE  dcx h \ call kvazwriteBCeven
 #define STORE_DE_TO_HL_REVERSE  dcx h \ call kvazwriteDEeven
@@ -50,6 +49,7 @@
 #define STORE_C_TO_HL mov m, c
 #define STORE_A_TO_HL mov m, a
 #define STORE_DE_TO_HL mov m, e \ inx h \ mov m, d
+#define STORE_E_TO_HL  mov m, e
 #define STORE_BC_TO_HL_REVERSE mov m, b \ dcx h \ mov m, c
 #define STORE_DE_TO_HL_REVERSE mov m, d \ dcx h \ mov m, e
 
@@ -1000,8 +1000,8 @@ test_opcode_table:
         .dw 102400q ; BVS  0177400   
         .dw 103000q ; BCC  0177400   
         .dw 103400q ; BCS  0177400   
-        .dw 104000q ; EMT      
-        .dw 104400q ; TRAP     
+        .dw 104000q ; EMT  0177400
+        .dw 104400q ; TRAP 0177400
         .dw 105000q ; CLRB 0177700   
         .dw 105100q ; COMB 0177700    
         .dw 105200q ; INCB 0177700 
@@ -2295,6 +2295,16 @@ sdeha_reg:
         STORE_DE_TO_HL_REG
         ret
 
+_store_e_hl_addrmode:
+        lda vm1_addrmode
+        ora a
+        jz seha_reg
+        STORE_E_TO_HL
+        ret
+seha_reg:
+        STORE_E_TO_HL_REG
+        ret
+
 
 opc_swab: 
         xchg
@@ -2535,11 +2545,8 @@ opc_jsr:
 
 opc_clr:   
         xchg
-        call load_dd16
-        dcx h
         lxi b, 0
-        ;STORE_BC_TO_HL
-        call _store_bc_hl_addrmode
+        call store_dd16
 clr_aluf_and_ret:
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
@@ -2550,9 +2557,8 @@ clr_aluf_and_ret:
 
 opc_clrb:
         xchg
-        call load_dd8
         lxi b, 0
-        call _store_c_hl_addrmode
+        call store_dd8
         jmp clr_aluf_and_ret
 
 opc_com:   
@@ -2624,6 +2630,7 @@ opc_inc:
         call load_dd16
         dcx h
         inx d
+        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
 
         ; aluf NZV
@@ -2914,20 +2921,6 @@ ror_aluf:
         jmp rol_nzv
 
 opc_rol:   
-;        ; debug BREAK ------ - -   -
-;        lda r7
-;        cpi (10010q & 377q)
-;        jnz notthat
-;        lda r7+1
-;        cpi (10010q >> 8)
-;        jnz notthat
-;        ;hlt
-;        mvi a, $76 ; hlt
-;        sta killswitch
-;notthat:
-;        ; -  --  ----   -------------------
-;killswitch:   nop
-
         ; 0061dd ROL dd
         xchg
         call load_dd16
@@ -3198,6 +3191,20 @@ opc_sxt:
         jmp store_dd16
 
 opc_bit:
+;        ; debug BREAK ------ - -   -
+;        lda r7
+;        cpi (10506q & 377q)
+;        jnz notthat
+;        lda r7+1
+;        cpi (10506q >> 8)
+;        jnz notthat
+;        ;hlt
+;        mvi a, $76 ; hlt
+;        sta killswitch
+;notthat:
+;        ; -  --  ----   -------------------
+;killswitch:   nop
+
         ; 03ssdd bit ss, dd: src & dst, N=msb, Z=z, V=0, C not touched
         xchg
         push h
@@ -3206,7 +3213,9 @@ opc_bit:
           mov c, e
         pop h
 
-        call load_dd16    ; de <- dst
+        push b
+          call load_dd16    ; de <- dst
+        pop b
         mov a, b
         ana d
         mov b, a
@@ -3456,9 +3465,11 @@ opc_cmp:
         ; 02ssdd CMP ss, dd   src - dst -> flags
         xchg
         push h
+        ;push d
           call load_ss16
           mov b, d
           mov c, e        ; bc <- src
+        ;pop d
         pop h
 
         push b
@@ -3700,8 +3711,8 @@ opc_incb:
         xchg
         call load_dd8
         inr e
-        mov c, e
-        call _store_c_hl_addrmode
+        ;STORE_E_TO_HL
+        call _store_e_hl_addrmode
 
         ; aluf NZV
         lxi h, rpsw
@@ -3734,8 +3745,7 @@ opc_decb:
         xchg
         call load_dd8
         dcr e
-        mov c, e
-        call _store_c_hl_addrmode
+        call _store_e_hl_addrmode
 
         ; aluf NZV
         lxi h, rpsw
@@ -3772,8 +3782,8 @@ opc_negb:
         mov a, e
         cma
         inr a
-        mov c, a
-        call _store_c_hl_addrmode
+        mov e, a
+        call _store_e_hl_addrmode
 
         ; aluf NZVC
         lxi h, rpsw
@@ -3782,7 +3792,7 @@ opc_negb:
         mov m, a
 
         xra a 
-        ora c
+        ora e
         mvi a, PSW_Z
         jz $+5
         mvi a, PSW_C
@@ -3790,7 +3800,7 @@ opc_negb:
         mov m, a
 
         xra a
-        ora c
+        ora e
         mvi a, PSW_N
         jm $+4
         xra a
@@ -3799,7 +3809,7 @@ opc_negb:
 
         ; V flag dst == $80
         mvi a, $80
-        cmp c
+        cmp e
         rnz
         mvi a, PSW_V
         ora m
@@ -3816,19 +3826,18 @@ opc_adcb:
         rar             ; PSW_C -> host.C
         jnc adcb_no_cin
 
-        mov c, e
-        inr c           ; e = dst8 + cin (1)
-        call _store_c_hl_addrmode
+        inr e           ; e = dst8 + cin (1)
+        call _store_e_hl_addrmode
 
         xra a
-        ora c
+        ora e
         jnz adcb_no_cout
         ; cout if dst8 == 0
         mvi b, PSW_C
         jmp adcb_no_cin
 adcb_no_cout:
         mvi a, $80
-        cmp c
+        cmp e
         jnz adcb_no_cin
         ; V if dst8 == $80, sign change
         mvi b, PSW_V
@@ -3840,7 +3849,7 @@ adcb_no_cin:
         mov m, a
 
         xra a
-        ora c
+        ora e
         jnz _adcb_n
         mvi a, PSW_Z
         ora m
@@ -3848,7 +3857,7 @@ adcb_no_cin:
         ret
 _adcb_n:      
         xra a
-        ora c
+        ora e
         rp
         mvi a, PSW_N
         ora m
@@ -3866,18 +3875,17 @@ opc_sbcb:
         rar
         jnc adcb_no_cin ; do nothing, set flags like adcb
 
-        mov c, e
-        dcr c           ; e = dst8 - Cin
-        call _store_c_hl_addrmode
+        dcr e           ; e = dst8 - Cin
+        call _store_e_hl_addrmode
 
         mvi a, $ff      ; 00->ff -> Cout, V = 0
-        cmp c
+        cmp e
         jnz _sbcb_tv
         mvi b, PSW_C
         jmp adcb_no_cin
 _sbcb_tv: 
         rar             ; a=$7f
-        cmp c
+        cmp e
         jnz adcb_no_cin
         mvi b, PSW_V    ; dst $80->$7f, V = 1 (sign change)
         jmp adcb_no_cin
@@ -4116,16 +4124,16 @@ test_loadw_7_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
         call setreg \ .dw r7 \ .dw $1210
-        call setmem \ .dw $1210 \ .dw $0102             ; im16 := $0102
-        call setmem \ .dw 0102h+01234h \ .dw $1236      ; [r3+im16] <- $1236
-        call setmem \ .dw $1236 \ .dw $beef             ; [$1236] <- $beef
+        call setmem \ .dw $1210 \ .dw $0102 ; [1210] = 0102_big
+        call setmem \ .dw 0102h+01234h \ .dw $1236
+        call setmem \ .dw $1236 \ .dw $beef
         
         lxi h, 007373q
         call load_dd16
         call assert_de_equals \ .dw $beef
         call assert_reg_equals \ .dw r7 \ .dw $1212 ; check pc == pc + 2
 
-        call setreg \ .dw r7, $1210                     ; reset r7 <- $1210
+        call setreg \ .dw r7, $1210
         lxi h, 007373q
         call load_ss16
         call assert_de_equals \ .dw $beef
@@ -4351,26 +4359,23 @@ test_loadb_7:
 test_loadb_7_nomsg:
         call clearmem
         call setreg \ .dw r3 \ .dw $1234
-        call setreg \ .dw r7 \ .dw $1210                ;           
-        call setmem \ .dw $1210 \ .dw $0102             ; im16_1 := $0102
-        call setmem \ .dw $1212 \ .dw $0104             ; im16_2 := $0105
-        call setmem \ .dw 0102h+01234h \ .dw $1236      ; [r3 + im16_1] <- $1236 == & "ef"
-        call setmem \ .dw 0104h+01234h \ .dw $1237      ; [r3 + im16_2] <- $1237 == & "be"
+        call setreg \ .dw r7 \ .dw $1210
+        call setmem \ .dw $1210 \ .dw $0102             ; offset 1
+        call setmem \ .dw $1212 \ .dw $0105             ; offset 2
+        call setmem \ .dw 0102h+01234h \ .dw $1236      ; -> be
+        call setmem \ .dw 0105h+01234h \ .dw $1237      ; -> ef
         call setmem \ .dw $1236 \ .dw $beef
-
         
-        ; as dst, [r3 + $102] = $1236, [$1236] = $ef, r7 = $1212
+        ; as dst
         lxi h, 007373q
         call load_dd8
-        call assert_e_equals \ .dw $ef      ; this one ok
+        call assert_e_equals \ .dw $ef
         call assert_reg_equals \ .dw r7 \ .dw $1212 ; check pc == pc + 2
 
-        ; [$1234 + $105] = $1237, [$1237] = $be, r7 = $1214
         lxi h, 007373q
         call load_dd8
-        call assert_e_equals \ .dw $be      ; this reads 0
+        call assert_e_equals \ .dw $be
         call assert_reg_equals \ .dw r7 \ .dw $1214 ; check pc == pc + 2
-
 
         ; as src
         call setreg \ .dw r3 \ .dw $1234

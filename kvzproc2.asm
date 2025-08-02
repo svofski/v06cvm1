@@ -1,25 +1,25 @@
-;               .org 100h
+#define ROM_START $c000
+
+;		.org 100h
 
 #define kvazbank 10h
 #define kvazport 10h
 
 ;test
-#ifdef KVZPROC2_TEST
-                lxi h,1000h
-                lxi b,1234h
-                call kvazwriteBC
-                lxi h,1002h
-                mvi c,56h
-                call kvazwriteC
-                lxi h,1003h
-                mvi c,56h
-                call kvazwriteC
-                lxi h,1000h
-                call kvazreadDE         
-                lxi h,1002h
-                call kvazreadDE         
-                jmp $
-#endif
+		lxi h,1000h
+		lxi b,1234h
+		call kvazwriteBC
+		lxi h,1002h
+		mvi c,56h
+		call kvazwriteC
+		lxi h,1003h
+		mvi c,56h
+		call kvazwriteC
+		lxi h,1000h
+		call kvazreadDE		
+		lxi h,1002h
+		call kvazreadDE		
+		jmp $
 
 kvazreadDEeven:
                 mvi a, $fe
@@ -29,30 +29,26 @@ kvazreadDEeven:
 ;Input: address - HL
 ;Output: data - DE
 kvazreadDE:
-                ;inr h
-                ;jz readregDE
-                ;dcr h
-                mvi a, $ff
-                cmp h
+                inr h
                 jz readregDE
-
+                dcr h
                 push h
-                xchg                    ;DE=address
-                lxi h,0
-                dad sp                  ;HL=old SP
-                mvi a,kvazbank
-                di
-                out kvazport
-                xchg                    ;HL=address, DE=old SP
-                sphl                    ;SP=address
-                xchg                    ;HL=old SP
-                pop d                   ;DE=data
-                xra a
-                out kvazport
-                sphl                    ;SP=old SP
-                ei
+		xchg			;DE=address
+		lxi h,0
+		dad sp			;HL=old SP
+		mvi a,kvazbank
+		di
+		out kvazport
+		xchg			;HL=address, DE=old SP
+		sphl			;SP=address
+		xchg			;HL=old SP
+		pop d			;DE=data
+		xra a
+		out kvazport
+		sphl			;SP=old SP
+		ei
                 pop h
-                ret
+		ret
 
 kvazwriteBCeven:
                 mvi a, $fe
@@ -62,32 +58,32 @@ kvazwriteBCeven:
 kvazwriteBC:
                 mvi a, $ff
                 cmp h
-                jz writeregBC           ; --> register write
-                ;mvi a, (ROM_START >> 8) - 1
-                ;cmp h
-                ;jc jmp_trap             ; --> write to rom, trap to 4
+                jz writeregBC
+                mvi a, (ROM_START >> 8) - 1
+                cmp h
+                jc jmp_trap
 
+                push h
                 push d
-                  xchg                    ;DE=address
-                  lxi h,0
-                  dad sp                  ;HL=old SP
-                  mvi a,kvazbank
-                  di
-                  out kvazport
-                  xchg                    ;HL=address, DE=old SP
-                  sphl                    ;SP=address
-                  xchg                    ;HL=old SP
-                  inx sp
-                  inx sp                  ;SP=address+2
-                  push b
-                  xra a
-                  out kvazport
-                  sphl                    ;SP=old SP
-                  ei
-                  xchg
+		xchg			;DE=address
+		lxi h,0
+		dad sp			;HL=old SP
+		mvi a,kvazbank
+		di
+		out kvazport
+		xchg			;HL=address, DE=old SP
+		sphl			;SP=address
+		xchg			;HL=old SP
+		inx sp
+		inx sp			;SP=address+2
+		push b
+		xra a
+		out kvazport
+		sphl			;SP=old SP
+		ei
                 pop d
-
-                ret
+                pop h
+		ret
                 
 kvazwriteDEeven:
                 mvi a, $fe
@@ -104,34 +100,42 @@ kvazwriteDE:
 
 ;Input: address - HL, data - C
 kvazwriteC:
-                mvi a, $ff
-                cmp h
+                inr h
                 jz writeregC
-
+                dcr h
                 push d
                 push h
-                xchg                    ;DE=address
-                lxi h,0
-                dad sp                  ;HL=old SP
-                mvi a,kvazbank
-                di
-                out kvazport
-                xchg                    ;HL=address, DE=old SP
-                sphl                    ;SP=address
-                xchg                    ;HL=old SP
-                mov a,c
-                pop b
-                mov c,a
-                push b
-                xra a
-                out kvazport
-                sphl                    ;SP=old SP
-                ei
+		xchg			;DE=address
+		lxi h,0
+		dad sp			;HL=old SP
+		mvi a,kvazbank
+		di
+		out kvazport
+		xchg			;HL=address, DE=old SP
+		sphl			;SP=address
+		xchg			;HL=old SP
+		mov a,c
+		pop b
+		mov c,a
+		push b
+		xra a
+		out kvazport
+		sphl			;SP=old SP
+		ei
                 pop h
                 pop d
+		ret
+
+                ; [hl] <- e
+kvazwriteE:
+                push b
+                mov c, e
+                call kvazwriteC
+                pop b
                 ret
 
 readregDE:
+                dcr h        ; restore hl!
                 mvi a, 164q  ; 177564 tx control
                 cmp l
                 jz read_tx_control
@@ -157,6 +161,9 @@ writeregC:
                 mvi a, 164q   ; 177564 tx control
                 cmp l
                 jz write_tx_control
+                mvi a, 160q   ; 177560 rx control
+                cmp l
+                jz write_rx_control
                 
                 mvi a, 376q   ; pdp-11 PS
                 cmp l
@@ -183,10 +190,12 @@ read_rx_control:
                 mov e, a
                 rm        ; char awaits
 
+                push h
                 mvi c, $b ; C_STAT console status
                 call 5
                 lxi d, 0
                 ora a
+                pop h
                 rz
                 mvi a, $80
                 sta rx_control_reg
@@ -195,20 +204,24 @@ read_rx_control:
                 ; mvi c, 1 -- this is with echo, sux
                 ; call 5
                 ; sta rx_data_reg
+                push h
                 mvi c, 6 ; raw console i/o
                 mvi e, $ff
                 call 5
                 sta rx_data_reg
 
                 mvi e, $80
+                pop h
 
                 ret
 read_rx_data:
+                push h
                 lxi h, rx_data_reg
                 mov e, m
                 dcx h
                 mvi m, 0
                 mvi d, 0
+                pop h
                 ret
 write_tx_data:
                 mov a, c
@@ -238,4 +251,4 @@ read_ps177776:
                 mov e, a
                 mvi d, 0
                 ret
-                .end
+		.end
