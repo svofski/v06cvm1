@@ -570,7 +570,7 @@ void execute_test(const char* filename, int success_check) {
                 i8080_setreg_a(1);
                 i8080_setreg_l(1);
             }
-            else if (i8080_regs_c() == 1) {
+            else if (i8080_regs_c() == 6) {
                 fprintf(stderr, "------------->\n");
                 fflush(stderr);
                 fflush(stdout);
