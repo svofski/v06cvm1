@@ -224,6 +224,9 @@ read_rx_data:
                 pop h
                 ret
 write_tx_data:
+  ;;;;;
+  ;hlt ; for benchmark: k prohod 2596691
+  ;;;;;
                 mov a, c
                 sta tx_data_reg
                 sta txstrbuf
