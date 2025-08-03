@@ -2320,6 +2320,18 @@ sdeha_reg:
         STORE_DE_TO_HL_REG
         ret
 
+_store_de_hl_addrmode_bc:
+        lda vm1_addrmode
+        ora a
+        jz _sdehabcs_reg
+        push b
+          STORE_DE_TO_HL
+        pop b
+        ret
+_sdehabcs_reg:
+        STORE_DE_TO_HL_REG
+        ret
+
 _store_e_hl_addrmode:
         lda vm1_addrmode
         ora a
@@ -2799,9 +2811,7 @@ opc_adc:
         jnc adc_no_cin
 
         inx d           ; hl = dst + cin (1)
-        push b
-        call _store_de_hl_addrmode
-        pop b
+        call _store_de_hl_addrmode_bc
 
         xra a
         ora e
@@ -2859,9 +2869,7 @@ opc_sbc:
         mvi b, PSW_C
 
         dcx d           ; dst <- dst - Cin (1)
-        push b
-        call _store_de_hl_addrmode
-        pop b
+        call _store_de_hl_addrmode_bc
 
         xra a
         ora b
@@ -2925,11 +2933,10 @@ _tstb_n:
 
 opc_ror:   
         ; 0060dd ROR dd
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
 
-        mov c, e    ; remember lsb for carry aluf
+        ;;mov c, e    ; remember lsb for carry aluf
+        mvi c, 0 ; temporary flags
         
         ; load carry
         lda rpsw
@@ -2941,9 +2948,9 @@ opc_ror:
         mov a, e
         rar
         mov e, a
-        push b
-        call _store_de_hl_addrmode
-        pop b
+        jnc $+5
+        mvi c, PSW_C
+        call _store_de_hl_addrmode_bc
 
         ; aluf NZVC
 ror_aluf:
@@ -2951,23 +2958,17 @@ ror_aluf:
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
         ana m
         mov m, a
-        ; C
-        mov a, c
-        rar           ; saved lsb of source -- test low bit
-        mvi c, 0      ; temporary flags
-        jnc rol_nzv
-        mvi c, PSW_C
         jmp rol_nzv
 
 opc_rol:   
         ; 0061dd ROL dd
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
 
-        mov b, d ; remember msb
+        mvi c, 0
         xchg
         dad h
+        jnc $+5
+        mvi c, PSW_C  ; set PSW_C if C
 
         ; carry in from PSW_C
         lda rpsw
@@ -2976,22 +2977,14 @@ opc_rol:
         mov l, a
 
         xchg
-        push b
-        call _store_de_hl_addrmode
-        pop b
+        call _store_de_hl_addrmode_bc  ;; 24 + 12 + 12 vs lhld vm1_opcode \ jmp _store_de_hl_addrmode  20 + 12
 rol_aluf:
         ; aluf NZVC
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
         ana m
         mov m, a
-        ; C
-        mvi c, 0    ; temporary flags
-        xra a
-        ora b ; saved msb of source -- test high bit
-        jp rol_nzv
-        mvi c, PSW_C
-
+        ; C is in C
         ; set NZV flags after rotation
         ; hl = &rpsw, PSW_C already set, de = result
 rol_nzv:  
@@ -3031,7 +3024,8 @@ opc_asr:
         ;call load_dd16
         call load_de_dd16
 
-        mov c, e    ; remember lsb for ror_aluf
+        ;mov c, e    ; remember lsb for ror_aluf
+        mvi c, 0    ; temporary flags (see ror_aluf)
         mvi a, $80
         ana d       ; remember msb for sign extend
         mov b, a    ; b = sign bit
@@ -3043,12 +3037,13 @@ opc_asr:
         rar
         mov e, a
 
+        jnc $+5
+        mvi c, PSW_C
+
         mov a, d    ; put sign bit in place
         ora b
         mov d, a
-        push b
-        call _store_de_hl_addrmode
-        pop b
+        call _store_de_hl_addrmode_bc
         jmp ror_aluf
 
 opc_asl:   
@@ -3057,14 +3052,15 @@ opc_asl:
         ;call load_dd16
         call load_de_dd16
 
-        mov b, d ; remember msb for rol_aluf
+        ;mov b, d ; remember msb for rol_aluf
+        mvi c, 0
         xchg
         dad h
+        jnc $+5
+        mvi c, PSW_C
 
         xchg
-        push b
-        call _store_de_hl_addrmode
-        pop b
+        call _store_de_hl_addrmode_bc
         jmp rol_aluf
 
 opc_rorb:

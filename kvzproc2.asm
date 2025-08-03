@@ -278,6 +278,7 @@ write_tx_data:
   ;;;;;                   7368331     -> 06:41        ~ 89.1 x slower
   ;;;;;                   7356193 jnc check in write
   ;;;;;                   7343641 mov/movb branchy setaluf
+  ;;;;;                   ---     ror/rol/asl/asr -- 06:38
                 mov a, c
                 sta tx_data_reg
                 sta txstrbuf
