@@ -1923,9 +1923,11 @@ ldwmode6:
           inx h \ inx h
           shld r7             ; r7 += 2
         pop h                 ; hl = &reg
-        LOAD_BC_FROM_HL_REG   ; bc <- reg (updated if r7)
-        xchg                  ; hl <- im16
-        dad b                 ; hl = R + im16
+        push b
+          LOAD_BC_FROM_HL_REG   ; bc <- reg (updated if r7)
+          xchg                  ; hl <- im16
+          dad b                 ; hl = R + im16
+        pop b
         ; bc = 442q, confirmed
         LOAD_DE_FROM_HL       ; de = guest[hl], addr = hl - 1
         ; de = guest[1546] = 012767 = $15f7
@@ -1940,12 +1942,13 @@ ldwmode7:
           inx h \ inx h
           shld r7             ; r7 += 2
         pop h                 ; hl = &reg
-        LOAD_BC_FROM_HL_REG   ; bc <- reg (updated if r7)
-        ; bc = 442q, confirmed
+        push b
+          LOAD_BC_FROM_HL_REG   ; bc <- reg (updated if r7)
+          ; bc = 442q, confirmed
 
-        xchg                  ; hl <- im16
-        dad b                 ; hl = R + im16
-
+          xchg                  ; hl <- im16
+          dad b                 ; hl = R + im16
+        pop b
         LOAD_DE_FROM_HL       ; de = guest[hl], addr = hl - 1
 
         ; de = adrs
@@ -3322,9 +3325,9 @@ opc_bit:
         ;pop h
         lhld vm1_opcode
 
-        push b
+        ;push b
           call load_dd16    ; de <- dst
-        pop b
+        ;pop b
         mov a, b
         ana d
         mov b, a
@@ -3361,9 +3364,9 @@ opc_bic:
         mov b, d
         mov c, e        ; bc <- src
         lhld vm1_opcode
-        push b
+        ;push b
           call load_dd16    ; de <- dst, hl = dst+1
-        pop b
+        ;pop b
         mov a, c
         cma
         ana e
@@ -3386,9 +3389,9 @@ opc_bis:
           mov c, e
         ;pop h
         lhld vm1_opcode
-        push b
+        ;push b
           call load_dd16
-        pop b
+        ;pop b
         mov a, c
         ora e
         mov c, a
@@ -3473,9 +3476,9 @@ opc_add:
         mov b, d
         mov c, e
         lhld vm1_opcode
-        push b
+        ;push b
           call load_dd16
-        pop b
+        ;pop b
         ; bc = src, de = dst, hl = &dst
         
         push h
@@ -3525,16 +3528,13 @@ _add_flags_done:
 
 opc_sub:
         xchg
-        ;push h
           call load_ss16
           mov b, d
           mov c, e
-        ;pop h
         lhld vm1_opcode
-        push b
+        ;push b
           call load_dd16
-          ;dcx h
-        pop b
+        ;pop b
         ; bc = src, de = dst, hl = &dst
         
         push h
@@ -3576,9 +3576,9 @@ opc_cmp:
         ;pop h
         lhld vm1_opcode
 
-        push b
+        ;push b
           call load_dd16  ; de <- dst
-        pop b
+        ;pop b
         
 
         ; src - dst (sub the other way around)
@@ -3701,9 +3701,9 @@ opc_xor:
           mov b, d
           mov c, e
         pop h
-        push b
+        ;push b
           call load_dd16
-        pop b
+        ;pop b
         mov a, b
         xra d
         mov b, a

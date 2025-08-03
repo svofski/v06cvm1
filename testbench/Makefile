@@ -8,7 +8,7 @@ ifeq ($(OS),Windows_NT)
 else
   RUN_PREFIX = ./
   #CC = cc -O3 -o $(IMAGE)
-  CC = g++ -std=c++17 -O0 -g $(WITH_KVAZ) $(ROM) -o $(IMAGE) -Idisass
+  CC = g++ -std=c++17 -O0 -g $(WITH_KVAZ) $(ROM) $(BENCHMARK) -o $(IMAGE) -Idisass
 endif
 
 FILES = \

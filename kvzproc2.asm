@@ -279,6 +279,7 @@ write_tx_data:
   ;;;;;                   7356193 jnc check in write
   ;;;;;                   7343641 mov/movb branchy setaluf
   ;;;;;                   ---     ror/rol/asl/asr -- 06:34
+  ;;;;;                   ---     less push around load_dd16, ~ 06:34 
                 mov a, c
                 sta tx_data_reg
                 sta txstrbuf

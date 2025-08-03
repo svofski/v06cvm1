@@ -8,7 +8,9 @@ TESTS="SERIOUSLY"
 export WITH_KVAZ=-DWITH_KVAZ=1
 export TESTBENCH=-DTESTBENCH=1
 
-export ROM=-DBASIC=1
+# BENCHMARK is a trap in testbench on BASIC error message
+export BENCHMARK=-DBENCHMARK=1
+export ROM=-DBASIC=1 
 #export ROM=-DTEST_791401=1
 #export ROM=-DTEST_GKAAA0=1
 
@@ -16,7 +18,7 @@ export ROM=-DBASIC=1
 awk -f opcodes.awk vm1.lst > testbench/vm1_opcodes.h
 
 set -x
-make WITH_KVAZ=$WITH_KVAZ ROM=$ROM -C testbench 
+make WITH_KVAZ=$WITH_KVAZ ROM=$ROM BENCHMARK=$BENCHMARK -C testbench 
 
 mkdir -p log
 

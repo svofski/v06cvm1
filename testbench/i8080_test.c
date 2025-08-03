@@ -531,6 +531,14 @@ void execute_test(const char* filename, int success_check) {
             fprintf(stderr, "\n%06o: %-8s%-32s", pc, instr_buf, arg_buf);
 
             print_regs();
+
+
+#ifdef BENCHMARK
+            if (pc == 000210) {
+                printf("\nBENCHMARK tarp at 000210; Total: %lu cycles. ", cycles);
+                return;
+            }
+#endif
         }
 
         int opc = find_in_opcode_handlers(pc);
