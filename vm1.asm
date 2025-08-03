@@ -2332,6 +2332,19 @@ _sdehabcs_reg:
         STORE_DE_TO_HL_REG
         ret
 
+;_store_de_hl_amode_x:
+;sdhl_hl  .equ $+1
+;        lxi h, 0
+;        lda vm1_addrmode
+;        ora a
+;        jz _sdehax_reg
+;        STORE_DE_TO_HL
+;        ret
+;_sdehax_reg:
+;        STORE_DE_TO_HL_REG
+;        ret
+
+
 _store_e_hl_addrmode:
         lda vm1_addrmode
         ora a
@@ -2438,14 +2451,41 @@ opc_bne:
         ; Z = 0
         lda rpsw
         ani PSW_Z
-        jz opc_br_int
+        rnz
+        ; br_int expanded
+        mov a, e
+        add a       ; c (extend)
+        mov e, a
+        jnc _bne_plus_shared
+        mvi d, -1
+        lhld r7
+        dad d
+        shld r7
         ret
+_bne_plus_shared:
+        mvi d, 0
+        lhld r7
+        dad d
+        shld r7
+        ret
+
 opc_beq:
         ; Z = 1
         lda rpsw
         ani PSW_Z
-        jnz opc_br_int
+        rz
+        ;jnz opc_br_int
+        ; br_int expanded
+        mov a, e
+        add a       ; c (extend)
+        mov e, a
+        jnc _bne_plus_shared
+        mvi d, -1
+        lhld r7
+        dad d
+        shld r7
         ret
+
 opc_bge:
         ; N ^ V = 0 
         lda rpsw
@@ -2950,7 +2990,19 @@ opc_ror:
         mov e, a
         jnc $+5
         mvi c, PSW_C
-        call _store_de_hl_addrmode_bc
+        ;call _store_de_hl_addrmode_bc
+;;; -------------- macro store_de_hl_addrmode_bc
+        lda vm1_addrmode
+        ora a
+        jz _ror_xx1
+        push b
+          STORE_DE_TO_HL
+        pop b
+        jmp _ror_xx2
+_ror_xx1:
+        STORE_DE_TO_HL_REG
+_ror_xx2:
+;;; --------------------------------------------
 
         ; aluf NZVC
 ror_aluf:
@@ -2977,7 +3029,23 @@ opc_rol:
         mov l, a
 
         xchg
-        call _store_de_hl_addrmode_bc  ;; 24 + 12 + 12 vs lhld vm1_opcode \ jmp _store_de_hl_addrmode  20 + 12
+        ;call _store_de_hl_addrmode_bc  ;; 24 + 12 + 12 vs lhld vm1_opcode \ jmp _store_de_hl_addrmode  20 + 12
+
+;;; -------------- macro store_de_hl_addrmode_bc
+
+        lda vm1_addrmode
+        ora a
+        jz _rol_xx1
+        push b
+          STORE_DE_TO_HL
+        pop b
+        jmp _rol_xx2
+_rol_xx1:
+        STORE_DE_TO_HL_REG
+_rol_xx2:
+;;; --------------------------------------------
+
+
 rol_aluf:
         ; aluf NZVC
         lxi h, rpsw
@@ -3043,7 +3111,19 @@ opc_asr:
         mov a, d    ; put sign bit in place
         ora b
         mov d, a
-        call _store_de_hl_addrmode_bc
+        ;call _store_de_hl_addrmode_bc
+;;; -------------- macro store_de_hl_addrmode_bc
+        lda vm1_addrmode
+        ora a
+        jz _asr_xx1
+        push b
+          STORE_DE_TO_HL
+        pop b
+        jmp ror_aluf ;_asr_xx2
+_asr_xx1:
+        STORE_DE_TO_HL_REG
+_asr_xx2:
+;;; --------------------------------------------
         jmp ror_aluf
 
 opc_asl:   
@@ -3060,7 +3140,19 @@ opc_asl:
         mvi c, PSW_C
 
         xchg
-        call _store_de_hl_addrmode_bc
+        ;call _store_de_hl_addrmode_bc
+;;; -------------- macro store_de_hl_addrmode_bc
+        lda vm1_addrmode
+        ora a
+        jz _asl_xx1
+        push b
+          STORE_DE_TO_HL
+        pop b
+        jmp rol_aluf ;_asl_xx2
+_asl_xx1:
+        STORE_DE_TO_HL_REG
+_asl_xx2:
+;;; --------------------------------------------
         jmp rol_aluf
 
 opc_rorb:
