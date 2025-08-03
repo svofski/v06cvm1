@@ -7,7 +7,9 @@ dma     .equ $80
 C_WRITE         .equ 2
 C_WRITESTR      .equ 9        
 F_OPEN          .equ 15          ; open file
+F_CLOSE         .equ 16
 F_READ          .equ 20          ; read next record
+F_READRAND      .equ 33          ; read random record
 
 msg_gamarjoba:
         .db $1b, $5c, "Trap to 4 for Vector-06c + kvaz - svofski 2025", 0dh, 0ah, "$", 26
@@ -53,21 +55,10 @@ load_file:
         lxi d, msg_gamarjoba
         mvi c, C_WRITESTR
         call BDOS
-        
-copy_name:
+
         lxi b, filename
-        lxi d, fcb1 + 1         ; fcb1 name
-cn_L1:  ldax b
-        ora a
-        jz fcb_ready 
-        stax d
-        inx b \ inx d
-        jmp cn_L1
-fcb_ready:
-        mvi c, F_OPEN
-        lxi d, fcb1
-        call BDOS
-        inr a
+        call open_fcb1
+        
         jz notfound_error
 
         ; Loading...
@@ -111,6 +102,8 @@ read_ok:
         jmp fread_loop
 
 read_eof:
+        call close_fcb1
+
         lxi d, msg_read_done
         mvi c, C_WRITESTR
         call BDOS
@@ -178,3 +171,22 @@ ctk_sp  .equ $ + 1
         ei
         ret
 
+open_fcb1:
+        lxi d, fcb1 + 1         ; fcb1 name
+cn_L1:  ldax b
+        ora a
+        jz fcb_ready 
+        stax d
+        inx b \ inx d
+        jmp cn_L1
+fcb_ready:
+        mvi c, F_OPEN
+        lxi d, fcb1
+        call BDOS
+        inr a
+        ret
+
+close_fcb1:
+        lxi d, fcb1
+        mvi c, F_CLOSE
+        jmp BDOS

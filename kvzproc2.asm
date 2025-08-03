@@ -240,6 +240,11 @@ readregDE:
                 cpi 162q   ; 177562 rx data
                 jz read_rx_data
 
+                cpi 177170q & 377q  ; RX_CSR    RX floppy status reg
+                jz read_rxdrv_csr
+                cpi 177172q & 377q  ; RX_DATA   RX floppy data reg
+                jz read_rxdrv_data
+
                 cpi 376q   ; pdp-11 PS
                 jz read_ps177776
 
@@ -253,6 +258,11 @@ writeregC:
                 jz write_tx_control
                 cpi 160q   ; 177560 rx control
                 jz write_rx_control
+
+                cpi 177170q & 377q  ; RX_CSR    RX floppy status reg
+                jz write_rxdrv_csr
+                cpi 177172q & 377q  ; RX_DATA   RX floppy data reg
+                jz write_rxdrv_data
                 
                 cpi 376q   ; pdp-11 PS
                 jz write_ps177776
@@ -337,7 +347,7 @@ write_tx_control:
                 sta tx_control_reg
                 ret
 write_rx_control:
-                mov a, e
+                mov a, c ; was e?
                 sta rx_control_reg
                 ret
 

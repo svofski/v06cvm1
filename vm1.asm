@@ -117,6 +117,19 @@
         sta 5
 #else
         call load_file
+
+        call putsi \ .db 10, 13, "RX11 TEST", 10, 13, "$"
+        ; test rxdrv
+        call rxdrv_mount
+        lxi b, 7 ; #READ+GO
+        call write_rxdrv_csr
+        mvi c, 23    ; sector
+        call write_rxdrv_data
+        mvi c, 65    ; track
+        call write_rxdrv_data
+
+        jmp $
+
 #endif
         ;jmp test_mov_1
         ;jmp test_opcodes
@@ -4703,5 +4716,7 @@ test_storeb_7:
 #endif ; ADDRMODES
 
         .include "kvzproc2.asm"
+        .include "rxdrv.asm"
+        .include "mul24.asm"
 
 .end
