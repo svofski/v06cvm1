@@ -1413,7 +1413,7 @@ vm1op00:
 vm1op01: ; 01ssdd mov ss, dd
 opc_mov:
         xchg  ; opcode was in de -> hl
-        push h
+        ;push h
         call load_ss16
         mov b, d
         mov c, e
@@ -1476,7 +1476,7 @@ vm1op10:
 vm1op11:
 opc_movb:
         xchg  ; opcode was in de -> hl
-        push h
+        ;push h
         call load_ss8
         mov b, d
         mov c, e
@@ -2541,11 +2541,12 @@ opc_jsr:
         ;   R7 = temp
         
         xchg
-        push h
+        ;push h
           call load_dd16
           ;dcx h ; h = new address
           xchg  ; de = EA
-        pop h ; hl = opcode
+        ;pop h ; hl = opcode
+        lhld vm1_opcode
         push d ; save EA
           dad h
           dad h
@@ -3251,11 +3252,12 @@ opc_bit:
 
         ; 03ssdd bit ss, dd: src & dst, N=msb, Z=z, V=0, C not touched
         xchg
-        push h
+        ;push h
           call load_ss16
           mov b, d        ; bc <- src
           mov c, e
-        pop h
+        ;pop h
+        lhld vm1_opcode
 
         push b
           call load_dd16    ; de <- dst
@@ -3292,11 +3294,12 @@ bit_n:  mvi a, PSW_N
 opc_bic:
         ; 04ssdd bic ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C not touched
         xchg
-        push h
+        ;push h
           call load_ss16
           mov b, d
           mov c, e        ; bc <- src
-        pop h
+        ;pop h
+        lhld vm1_opcode
         push b
           call load_dd16    ; de <- dst, hl = dst+1
         pop b
@@ -3316,11 +3319,12 @@ opc_bic:
 opc_bis:
         ; 05ssdd bis ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
         xchg
-        push h
+        ;push h
           call load_ss16
           mov b, d
           mov c, e
-        pop h
+        ;pop h
+        lhld vm1_opcode
         push b
           call load_dd16
         pop b
@@ -3337,10 +3341,11 @@ opc_bis:
 opc_bitb:
         ; 13ssdd bitb ss, dd: src & dst, N=msb, Z=z, V=0, C no touchy
         xchg
-        push h
+        ;push h
           call load_ss8
           mov c, e        ; <- src
-        pop h
+        ;pop h
+        lhld vm1_opcode
         push b
           call load_dd8
         pop b
@@ -3369,10 +3374,11 @@ bitb_n: mvi a, PSW_N
 opc_bicb:
         ; 14ssdd bicb ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C no touchy
         xchg
-        push h
+        ;push h
           call load_ss8
           mov c, e
-        pop h
+        ;pop h
+        lhld vm1_opcode
         push b
           call load_dd8
         pop b
@@ -3386,10 +3392,11 @@ opc_bicb:
 opc_bisb:
         ; 15ssdd bisb ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
         xchg
-        push h
+        ;push h
           call load_ss8
           mov c, e
-        pop h
+        ;pop h
+        lhld vm1_opcode
         push b
           call load_dd8
         pop b
@@ -3401,11 +3408,12 @@ opc_bisb:
 
 opc_add:
         xchg
-        push h
+        ;push h
           call load_ss16
           mov b, d
           mov c, e
-        pop h
+        ;pop h
+        lhld vm1_opcode
         push b
           call load_dd16
         pop b
@@ -3463,11 +3471,12 @@ _add_flags_done:
 
 opc_sub:
         xchg
-        push h
+        ;push h
           call load_ss16
           mov b, d
           mov c, e
-        pop h
+        ;pop h
+        lhld vm1_opcode
         push b
           call load_dd16
           ;dcx h
@@ -3506,13 +3515,12 @@ opc_sub:
 opc_cmp: 
         ; 02ssdd CMP ss, dd   src - dst -> flags
         xchg
-        push h
-        ;push d
+        ;push h
           call load_ss16
           mov b, d
           mov c, e        ; bc <- src
-        ;pop d
-        pop h
+        ;pop h
+        lhld vm1_opcode
 
         push b
           call load_dd16  ; de <- dst
@@ -3573,10 +3581,11 @@ cmp_n:
 opc_cmpb:
         ; 12ssdd CMP ss, dd  src - dst -> flags
         xchg
-        push h
+        ;push h
           call load_ss8
           mov c, e      ; c <- src
-        pop h
+        ;pop h
+        lhld vm1_opcode
         push b
           call load_dd8   ; e <- dst
         pop b
@@ -3936,7 +3945,7 @@ _sbcb_tv:
 
 opc_mfps:
         ; 1067dd: psw -> dst
-        push d
+        ;push d #LHLD_OPCODE
           lhld rpsw
           mov c, l
           jmp movb_setaluf_and_store
@@ -3975,6 +3984,10 @@ opc_mtpd:
         rst 1
 
 mov_setaluf_and_store:
+        ;pop h
+        ;lhld vm1_opcode
+        ;call store_dd16 ; bc->dst
+
         ; aluf N, Z, V = 0
         lxi h, rpsw
         mvi a, ~(PSW_Z | PSW_N | PSW_V)
@@ -3986,77 +3999,90 @@ mov_setaluf_and_store:
         jm _mov_setaluf_n
         ora c
         jz _mov_setaluf_z
-        pop h
+        ;pop h
+        ;jmp store_dd16
+        ;ret
+        lhld vm1_opcode
         jmp store_dd16
 _mov_setaluf_n:
         mvi a, PSW_N
         ora m
         mov m, a
-        pop h
+        ;pop h
+        ;jmp store_dd16
+        ;ret
+        lhld vm1_opcode
         jmp store_dd16
 _mov_setaluf_z:
         mvi a, PSW_Z
         ora m
         mov m, a
-        pop h
+        ;pop h
+        ;jmp store_dd16
+        ;ret
+        lhld vm1_opcode
         jmp store_dd16
 
 
 movb_setaluf_and_store:
-;;; ;================== YOU ARE ERROR -- for the reference to fix later
-;;;         ; aluf N, Z, V = 0  -- if dst is reg, sign extend
-;;;         lxi h, rpsw
-;;;         mvi a, ~(PSW_Z | PSW_N | PSW_V)
-;;;         ana m
-;;;         mov m, a
-;;; 
-;;;         xra a
-;;;         ora c
-;;;         jm _movb_setaluf_n
-;;;         jz _movb_setaluf_z
-;;;         pop h
-;;;         jmp store_dd8
-;;; 
-;;; _movb_setaluf_n:
-;;;         mvi b, -1 ; sign extend = -1
-;;;         mvi a, PSW_N
-;;;         ora m
-;;;         mov m, a
-;;;         pop h
-;;;         jmp store_dd8
-;;; _movb_setaluf_z:
-;;;         mvi b, 0
-;;;         mvi a, PSW_Z
-;;;         ora m
-;;;         mov m, a
-;;;         pop h
-;;;         jmp store_dd8
-;;; ;=====================
+;================== YOU ARE ERROR -- for the reference to fix later
+        ; aluf N, Z, V = 0  -- if dst is reg, sign extend
+        lxi h, rpsw
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        mov m, a
+
+        xra a
+        ora c
+        jm _movb_setaluf_n
+        jz _movb_setaluf_z
+        mvi b, 0  ; positive sign extend
+        ;pop h
+        lhld vm1_opcode
+        jmp store_dd8
+
+_movb_setaluf_n:
+        mvi b, -1 ; sign extend = -1
+        mvi a, PSW_N
+        ora m
+        mov m, a
+        ;pop h
+        lhld vm1_opcode
+        jmp store_dd8
+_movb_setaluf_z:
+        mvi b, 0
+        mvi a, PSW_Z
+        ora m
+        mov m, a
+        ;pop h
+        lhld vm1_opcode
+        jmp store_dd8
+;=====================
          ; aluf N, Z, V = 0  -- if dst is reg, sign extend
-         lxi h, rpsw
-         mvi a, ~(PSW_Z | PSW_N | PSW_V)
-         ana m
-         mov m, a
-
-         mov a, c
-         ora a
-         mvi a, PSW_Z
-         jz $+4
-         xra a
-         ora m
-         mov m, a
-         mvi b, -1 ; sign extend = -1
-         mov a, c
-         add a
-         mvi a, PSW_N
-         jc $+5
-         xra a
-         mov b, a  ; sign extend = 0
-         ora m
-         mov m, a
-
-         pop h
-         jmp store_dd8
+;         lxi h, rpsw
+;         mvi a, ~(PSW_Z | PSW_N | PSW_V)
+;         ana m
+;         mov m, a
+;
+;         mov a, c
+;         ora a
+;         mvi a, PSW_Z
+;         jz $+4
+;         xra a
+;         ora m
+;         mov m, a
+;         mvi b, -1 ; sign extend = -1
+;         mov a, c
+;         add a
+;         mvi a, PSW_N
+;         jc $+5
+;         xra a
+;         mov b, a  ; sign extend = 0
+;         ora m
+;         mov m, a
+;
+;         pop h
+;         jmp store_dd8
 
 
 

@@ -192,8 +192,6 @@ readregDE:
 
                 jmp jmp_trap  ; nonexistent reg
 writeregBC:
-                ;hlt
-                ;jmp jmp_trap
 writeregC:
                 mvi a, 166q   ; 177566 tx data
                 cmp l
@@ -265,7 +263,14 @@ read_rx_data:
                 ret
 write_tx_data:
   ;;;;;
-  ;hlt ; for benchmark: basic = 7392755
+  ;hlt ; for benchmark: 
+  ;;;;;                   basic 
+  ;;;;; 10 FORI=1TO1000:NEXTI
+  ;;;;; 20 PRINT"KU!"
+  ;;;;;                   7392755
+  ;;;;;                   7368509 lhld vm1 opcode in mov
+  ;;;;;                   7368367 fixed movb setaluf, lhldified too
+  ;;;;;                   7368331     -> 06:43
   ;;;;;
                 mov a, c
                 sta tx_data_reg
