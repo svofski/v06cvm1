@@ -1,0 +1,12 @@
+testbench/i8080_test <test.bas 2>/dev/null
+
+test.bas BENCHMARK tarp at 000210
+master: 135023346
+opts2:  130499129 
+preftch:130370863
+inline: 115707242		test.bas 5:46 vs 0:04.5  ~ 77x slower
+tailstr:115519562 tail call store to addrmode
+        114534548 tail call load words
+        114464627 tail call load bytes
+	114268515 tail call store words
+	114263993 tail call store bytes 5:40 vs 0:04.5 ~ 75.5x

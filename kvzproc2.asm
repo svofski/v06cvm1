@@ -2,8 +2,6 @@
 
 ;		.org 100h
 
-#define kvazbank 10h
-#define kvazport 10h
 
 ;test
 		lxi h,1000h
@@ -78,6 +76,7 @@ kvazreadBC:
                     sphl                    ;SP=address
                     xchg                    ;HL=old SP
                     pop b                   ;BC=data
+                    pop d   ; read-ahead
                     xra a
                     out kvazport
                     sphl                    ;SP=old SP
@@ -85,6 +84,58 @@ kvazreadBC:
                   pop h
                 ;pop d
                 ret
+
+
+
+#if 0
+kvazinsnfetch:
+          lhld r7               ; 20 + 12 + 8 + 4 + 12 + 8 + 8 + 4 + 12 = 88
+          lxi d, prefetched_addr
+          ldax d
+          cmp l
+          jnz prefetch_miss
+          inx d
+          ldax d
+          cmp h
+          jnz prefetch_miss
+
+          ; hit
+          inx h \ inx h
+          shld r7
+          lhld prefetched_word
+          ret
+
+prefetch_miss:
+          xchg
+          lxi h,0
+          di
+          dad sp
+          mvi a,kvazbank
+          out kvazport
+          xchg
+          sphl
+          xchg
+          pop d
+          pop b   ; read-ahead
+          xra a
+          out kvazport
+          sphl
+          ei
+        mov h, b
+        mov l, c
+        shld prefetched_word      ; 8 + 8 + 20; lxi \ mov \ inx \ mov  = 12 + 8 + 8 + 8
+
+        lhld r7
+        inx h \ inx h 
+        shld r7
+        shld prefetched_addr
+        xchg   ; hl = opcode
+        ret
+
+prefetched_word:  .dw 0
+prefetched_addr:  .dw 1
+#endif
+
 
 ;kvazwriteDEeven:
 ;                mvi a, $fe

@@ -3,6 +3,8 @@ BEGIN {
     opcode_count = 0;
     opcode_index = -1
     RS = ORS = "\r\n";
+
+    printf("uint16_t vm1_opcode_addr = 0xfe;\n");
 }
 
 / opc_[a-z]+:/ {
@@ -13,9 +15,9 @@ BEGIN {
     count += 1;
 }
 
-/ vm1_opcode:/ {
-    printf("uint16_t vm1_opcode_addr = 0x%s;\n", $2);
-}
+#/ vm1_opcode:/ {
+#    printf("uint16_t vm1_opcode_addr = 0x%s;\n", $2);
+#}
 
 / vm1_exec:/ {
     printf("uint16_t vm1_exec_addr = 0x%s;\n", $2);

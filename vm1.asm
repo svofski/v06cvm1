@@ -1,5 +1,8 @@
         .org $100
 
+#define kvazbank 10h
+#define kvazport 10h
+
         ; test load op16
         ;di
         ;xra a
@@ -22,13 +25,19 @@
 #ifdef WITH_KVAZ
 
 #define LOAD_DE_FROM_HL     call kvazreadDEeven
+#define JMP_LOAD_DE_FROM_HL jmp kvazreadDEeven
 #define LOAD_BC_FROM_HL     call kvazreadBCeven
 #define LOAD_E_FROM_HL      call kvazreadDE
+#define JMP_LOAD_E_FROM_HL  jmp kvazreadDE
 #define STORE_BC_TO_HL      call kvazwriteBCeven
+#define JMP_STORE_BC_TO_HL  jmp kvazwriteBCeven
 #define STORE_C_TO_HL       call kvazwriteC
+#define JMP_STORE_C_TO_HL   jmp kvazwriteC
 #define STORE_A_TO_HL       mov c, a \ call kvazwriteC
 #define STORE_DE_TO_HL      call kvazwriteDEeven
+#define JMP_STORE_DE_TO_HL  jmp kvazwriteDEeven
 #define STORE_E_TO_HL       call kvazwriteE
+#define JMP_STORE_E_TO_HL   jmp kvazwriteE
 #define STORE_BC_TO_HL_REVERSE  dcx h \ call kvazwriteBCeven
 #define STORE_DE_TO_HL_REVERSE  dcx h \ call kvazwriteDEeven
 
@@ -159,7 +168,7 @@ test_from_000200:
         ;lxi h, 200q
         lxi h, rom_start_addr   ; 200q for 791401, 140000q for 013-basic
         shld r7
-        jmp tm1_loop
+        jmp tm1_loop_enter
 #endif
 
 test_mov_1:
@@ -195,9 +204,47 @@ tm1_memcpy:
 #ifndef TESTBENCH
 tm1_loop_end:
 #endif
-tm1_loop:
-        call vm1_exec
 
+tm1_loop_enter:
+        lxi sp, $100
+
+tm1_loop:
+vm1_exec:
+        ;call kvazinsnfetch ;; hl <- opcode
+
+        ; inline ultrafast insn fetch, sp is fixed, vm1_opcode is at the top of the stack
+wildfetch:
+        di
+        lhld r7
+wild_miss:
+        sphl  ; guest addr = pc
+        inx h \ inx h ; hl <- pc + 2
+        shld r7
+        mvi a, kvazbank
+        out kvazport
+        pop h ; de <- opcode
+        xra a
+        out kvazport
+wild_fetched:
+        lxi sp, $100
+        ei
+
+        ;shld vm1_opcode
+        push h  ; vm1_opcode = hl (0x00fe)
+
+        ; set return address for instructions because we pchl into them
+        lxi b, vm1_exec_return
+        push b
+
+        xchg            ; de <- opcode
+        mvi a, $f0
+        ana d
+        mov l, a
+        mvi h, vm1_opcode1_tbl >> 8
+        pchl
+
+
+vm1_exec_return:
         ; process interruptsies
         lda intflg
         ora a
@@ -1347,23 +1394,10 @@ vm1_reset_l1:
 
         
 
-vm1_exec:
-        lhld r7
-        LOAD_DE_FROM_HL ; de = opcode, hl += 1
-        inx h \ inx h
-        shld r7         ; r7 += 2
-
-        xchg
-        shld vm1_opcode
-        xchg            ; opcode must be in de
-        mvi a, $f0
-        ana d
-        mov l, a
-        mvi h, vm1_opcode1_tbl >> 8
-        pchl
 
 
-vm1_opcode:     .dw 0
+;vm1_opcode:     .dw 0
+vm1_opcode .equ $100-2
 vm1_addrmode:   .db 0
 
         .org ( $ + 0FFH) & 0FF00H ; align 256
@@ -1834,8 +1868,7 @@ ldwmode1:
         xchg
         LOAD_DE_FROM_HL_REG
         xchg
-        LOAD_DE_FROM_HL       ; de = (reg)
-        ret
+        JMP_LOAD_DE_FROM_HL       ; de = (reg)
         
         .org load16 + (32*2)
         ; (R)+
@@ -1853,8 +1886,7 @@ ldwmode2:
         dcx d
         
         xchg
-        LOAD_DE_FROM_HL
-        ret
+        JMP_LOAD_DE_FROM_HL
         
         .org load16 + (32*3)
         ; @(R)+
@@ -1875,8 +1907,7 @@ ldwmode3:
         LOAD_DE_FROM_HL       ; de <- [hl]  [440]=1526
         
         xchg
-        LOAD_DE_FROM_HL       ; de <- [1526], hl = 1527
-        ret
+        JMP_LOAD_DE_FROM_HL       ; de <- [1526], hl = 1527
         
         .org load16 + (32*4)
         ; -(R)
@@ -1890,8 +1921,7 @@ ldwmode4:
         STORE_DE_TO_HL_REG_REVERSE
 
         xchg                  ; hl = reg
-        LOAD_DE_FROM_HL
-        ret
+        JMP_LOAD_DE_FROM_HL
 
         .org load16 + (32*5)
         ; @-(R)
@@ -1904,8 +1934,7 @@ ldwmode5:
         xchg                  ; hl = reg
         LOAD_DE_FROM_HL
         xchg
-        LOAD_DE_FROM_HL
-        ret
+        JMP_LOAD_DE_FROM_HL
         
         .org load16 + (32*6)
         ; X(R) - result = [R + im16], im16 = [R7]
@@ -1929,9 +1958,8 @@ ldwmode6:
           dad b                 ; hl = R + im16
         pop b
         ; bc = 442q, confirmed
-        LOAD_DE_FROM_HL       ; de = guest[hl], addr = hl - 1
+        JMP_LOAD_DE_FROM_HL       ; de = guest[hl], addr = hl - 1
         ; de = guest[1546] = 012767 = $15f7
-        ret
 
         .org load16 + (32*7)
         ; @X(R)
@@ -1953,8 +1981,7 @@ ldwmode7:
 
         ; de = adrs
         xchg
-        LOAD_DE_FROM_HL
-        ret
+        JMP_LOAD_DE_FROM_HL
 
         ;
         ; ------ byte load modes -------
@@ -1974,8 +2001,7 @@ ldbmode1:
         xchg
         LOAD_DE_FROM_HL_REG
         xchg
-        LOAD_E_FROM_HL
-        ret
+        JMP_LOAD_E_FROM_HL
         
         .org load8 + (32*2)
         ; (R)+
@@ -1996,8 +2022,7 @@ ldbmode2:
           ;pop h ; h <- reg addr + 1
           STORE_DE_TO_HL_REG_REVERSE
         pop h
-        LOAD_E_FROM_HL
-        ret
+        JMP_LOAD_E_FROM_HL
 
         .org load8 + (32*3)
         ; @(R)+
@@ -2017,8 +2042,7 @@ ldbmode3:
         LOAD_DE_FROM_HL
         
         xchg
-        LOAD_E_FROM_HL
-        ret
+        JMP_LOAD_E_FROM_HL
         
         .org load8 + (32*4)
         ; -(R)
@@ -2036,8 +2060,7 @@ ldbmode4:
         STORE_DE_TO_HL_REG_REVERSE
         xchg                    ; hl = reg
         ;mov e, m
-        LOAD_E_FROM_HL
-        ret
+        JMP_LOAD_E_FROM_HL
         
         .org load8 + (32*5)
         ; @-(R)
@@ -2050,8 +2073,7 @@ ldbmode5:
         xchg                    ; hl = reg
         LOAD_DE_FROM_HL
         xchg
-        LOAD_E_FROM_HL
-        ret
+        JMP_LOAD_E_FROM_HL
         
         .org load8 + (32*6)
         ; X(R) - result = [R + im16], im16 = [R7]
@@ -2065,8 +2087,7 @@ ldbmode6:
         LOAD_BC_FROM_HL_REG
         xchg 
         dad b                   ; hl = R + im16
-        LOAD_E_FROM_HL
-        ret
+        JMP_LOAD_E_FROM_HL
 
         .org load8 + (32*7)
         ; @X(R)
@@ -2074,8 +2095,7 @@ ldbmode7:
         call ldwmode6
         ; de = adrs
         xchg
-        LOAD_E_FROM_HL
-        ret
+        JMP_LOAD_E_FROM_HL
         
         ; DE = &reg16[dstreg]
         ; BC = value
@@ -2087,8 +2107,7 @@ stwmode0: ; reg16[dst] = BC
         .org store16 + (32*1)
 stwmode1: ; *reg16[dst] = BC
         xchg
-        STORE_BC_TO_HL
-        ret
+        JMP_STORE_BC_TO_HL
 
         .org store16 + (32*2)
 stwmode2: ; *reg16[dst] = BC, reg16[dst] += 2
@@ -2106,8 +2125,7 @@ stwmode3: ; **reg16[dst] = BC, reg16[dst] += 2
         dcx d \ dcx d \ xchg  ; hl = old reg16[dst]
         LOAD_DE_FROM_HL
         xchg                  ; hl = *reg16[dst]
-        STORE_BC_TO_HL
-        ret
+        JMP_STORE_BC_TO_HL
 
         .org store16 + (32*4)
 stwmode4:
@@ -2115,8 +2133,7 @@ stwmode4:
         dcx d \ dcx d         ; de = reg16[dst] - 2
         STORE_DE_TO_HL_REG    ; reg16[dst] -= 2
         xchg
-        STORE_BC_TO_HL
-        ret
+        JMP_STORE_BC_TO_HL
 
         .org store16 + (32*5)
 stwmode5:
@@ -2126,8 +2143,7 @@ stwmode5:
         xchg                  ; hl = reg16[dst] (addr of addr)
         LOAD_DE_FROM_HL
         xchg                  ; hl = *reg16[dst] (addr)
-        STORE_BC_TO_HL        ; **reg16[dst] = bc
-        ret
+        JMP_STORE_BC_TO_HL        ; **reg16[dst] = bc
 
         .org store16 + (32*6)
 stwmode6:
@@ -2143,8 +2159,7 @@ stwmode6:
           xchg                    ; hl = reg
           dad b                   ; hl = reg + bc, EA
         pop b
-        STORE_BC_TO_HL
-        ret
+        JMP_STORE_BC_TO_HL
 
         .org store16 + (32*7)
 stwmode7:
@@ -2163,8 +2178,7 @@ stwmode7:
           LOAD_DE_FROM_HL
           xchg
         pop b
-        STORE_BC_TO_HL
-        ret
+        JMP_STORE_BC_TO_HL
 
 
         .org ( $ + 0FFH) & 0FF00H ; align 256
@@ -2184,8 +2198,7 @@ stbmode0_with_sex:
         .org store8 + (32*1)
 stbmode1: ; *reg16[dst] = BC
         xchg
-        STORE_C_TO_HL
-        ret
+        JMP_STORE_C_TO_HL
 
         .org store8 + (32*2)
 stbmode2: ; *reg16[dst] = C, reg16[dst] += 1
@@ -2209,8 +2222,7 @@ stbmode3: ; **reg16[dst] = C, reg16[dst] += 2
         dcx d \ dcx d \ xchg  ; hl = old reg16[dst]
         LOAD_DE_FROM_HL
         xchg                  ; hl = *reg16[dst]
-        STORE_C_TO_HL         ; **reg16[dst] = C
-        ret
+        JMP_STORE_C_TO_HL         ; **reg16[dst] = C
 
         .org store8 + (32*4)
 stbmode4:
@@ -2218,8 +2230,7 @@ stbmode4:
         dcx d                 ; de = reg16[dst] - 1
         STORE_DE_TO_HL_REG    ; reg16[dst] -= 1
         xchg
-        STORE_C_TO_HL
-        ret
+        JMP_STORE_C_TO_HL
 
         .org store8 + (32*5)
 stbmode5:
@@ -2229,8 +2240,7 @@ stbmode5:
         xchg                  ; hl = reg16[dst] (addr of addr)
         LOAD_DE_FROM_HL
         xchg                  ; hl = *reg16[dst] (addr)
-        STORE_C_TO_HL         ; **reg16[dst] = bc
-        ret
+        JMP_STORE_C_TO_HL         ; **reg16[dst] = bc
 
         .org store8 + (32*6)
 stbmode6:
@@ -2245,8 +2255,7 @@ stbmode6:
           xchg                    ; hl = reg
           dad b                   ; hl = reg + bc, EA
         pop b
-        STORE_C_TO_HL
-        ret
+        JMP_STORE_C_TO_HL
 
 
         .org store8 + (32*7)
@@ -2265,8 +2274,7 @@ stbmode7:
           LOAD_DE_FROM_HL         
           xchg                    ; hl = guest[hl]
         pop b
-        STORE_C_TO_HL
-        ret
+        JMP_STORE_C_TO_HL
 
         ;
         ; OPCODE IMPLEMENTATION
@@ -2297,8 +2305,9 @@ _store_bc_hl_addrmode:
         lda vm1_addrmode
         ora a
         jz _sbcha_reg
-        STORE_BC_TO_HL
-        ret
+        JMP_STORE_BC_TO_HL
+        ;;STORE_BC_TO_HL
+        ;;ret
 _sbcha_reg:
         STORE_BC_TO_HL_REG
         ret
@@ -2307,8 +2316,8 @@ _store_c_hl_addrmode:
         lda vm1_addrmode
         ora a
         jz scha_reg
-        STORE_C_TO_HL
-        ret
+        JMP_STORE_C_TO_HL
+        ;;ret
 scha_reg:
         STORE_C_TO_HL_REG
         ret
@@ -2317,8 +2326,7 @@ _store_de_hl_addrmode:
         lda vm1_addrmode
         ora a
         jz sdeha_reg
-        STORE_DE_TO_HL
-        ret
+        JMP_STORE_DE_TO_HL
 sdeha_reg:
         STORE_DE_TO_HL_REG
         ret
@@ -2335,25 +2343,11 @@ _sdehabcs_reg:
         STORE_DE_TO_HL_REG
         ret
 
-;_store_de_hl_amode_x:
-;sdhl_hl  .equ $+1
-;        lxi h, 0
-;        lda vm1_addrmode
-;        ora a
-;        jz _sdehax_reg
-;        STORE_DE_TO_HL
-;        ret
-;_sdehax_reg:
-;        STORE_DE_TO_HL_REG
-;        ret
-
-
 _store_e_hl_addrmode:
         lda vm1_addrmode
         ora a
         jz seha_reg
-        STORE_E_TO_HL
-        ret
+        JMP_STORE_E_TO_HL
 seha_reg:
         STORE_E_TO_HL_REG
         ret
