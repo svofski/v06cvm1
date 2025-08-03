@@ -108,12 +108,17 @@ kvazwriteBCeven:                  ; 8 + 4 + 8 + 8 + 4 + 12 =
                 mov l, a
 ;Input: address - HL, data - BC
 kvazwriteBC:
-                mvi a, $ff
-                cmp h
+                mov a, h        ; 8 + 8 + 12 + 8 + 12    vs 8 + 4 + 12 + 8 + 4 + 12
+                cpi $ff
                 jz writeregBC
-                mvi a, (ROM_START >> 8) - 1
-                cmp h
-                jc jmp_trap
+                cpi (ROM_START >> 8)
+                jnc jmp_trap
+                ;mvi a, $ff
+                ;cmp h
+                ;jz writeregBC
+                ;mvi a, (ROM_START >> 8) - 1
+                ;cmp h
+                ;jc jmp_trap
 
                 push h
                   push d
@@ -144,25 +149,25 @@ kvazwriteC:
                 jz writeregC
                 dcr h
                 push d
-                push h
-		xchg			;DE=address
-		lxi h,0
-		dad sp			;HL=old SP
-		mvi a,kvazbank
-		di
-		out kvazport
-		xchg			;HL=address, DE=old SP
-		sphl			;SP=address
-		xchg			;HL=old SP
-		mov a,c
-		pop b
-		mov c,a
-		push b
-		xra a
-		out kvazport
-		sphl			;SP=old SP
-		ei
-                pop h
+                  push h
+		    xchg			;DE=address
+		    lxi h,0
+		    dad sp			;HL=old SP
+		    mvi a,kvazbank
+		    di
+		    out kvazport
+		    xchg			;HL=address, DE=old SP
+		    sphl			;SP=address
+		    xchg			;HL=old SP
+		    mov a,c
+		    pop b
+		    mov c,a
+		    push b
+		    xra a
+		    out kvazport
+		    sphl			;SP=old SP
+		    ei
+                  pop h
                 pop d
 		ret
 
@@ -271,7 +276,7 @@ write_tx_data:
   ;;;;;                   7368509 lhld vm1 opcode in mov
   ;;;;;                   7368367 fixed movb setaluf, lhldified too
   ;;;;;                   7368331     -> 06:41        ~ 89.1 x slower
-  ;;;;;
+  ;;;;;                   7356193 jnc check in write
                 mov a, c
                 sta tx_data_reg
                 sta txstrbuf
