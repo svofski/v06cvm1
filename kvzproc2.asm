@@ -232,35 +232,29 @@ kvazwriteE:
 
 readregDE:
                 dcr h        ; restore hl!
-                mvi a, 164q  ; 177564 tx control
-                cmp l
+                mov a, l
+                cpi 164q  ; 177564 tx control
                 jz read_tx_control
-                mvi a, 160q  ; 177560 rx control
-                cmp l
+                cpi 160q  ; 177560 rx control
                 jz read_rx_control
-                mvi a, 162q   ; 177562 rx data
-                cmp l
+                cpi 162q   ; 177562 rx data
                 jz read_rx_data
 
-                mvi a, 376q   ; pdp-11 PS
-                cmp l
+                cpi 376q   ; pdp-11 PS
                 jz read_ps177776
 
                 jmp jmp_trap  ; nonexistent reg
 writeregBC:
 writeregC:
-                mvi a, 166q   ; 177566 tx data
-                cmp l
+                mov a, l
+                cpi 166q   ; 177566 tx data
                 jz write_tx_data
-                mvi a, 164q   ; 177564 tx control
-                cmp l
+                cpi 164q   ; 177564 tx control
                 jz write_tx_control
-                mvi a, 160q   ; 177560 rx control
-                cmp l
+                cpi 160q   ; 177560 rx control
                 jz write_rx_control
                 
-                mvi a, 376q   ; pdp-11 PS
-                cmp l
+                cpi 376q   ; pdp-11 PS
                 jz write_ps177776
                 ; rx? dunno
 
