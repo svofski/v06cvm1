@@ -3984,106 +3984,74 @@ opc_mtpd:
         rst 1
 
 mov_setaluf_and_store:
-        ;pop h
-        ;lhld vm1_opcode
-        ;call store_dd16 ; bc->dst
-
-        ; aluf N, Z, V = 0
-        lxi h, rpsw
-        mvi a, ~(PSW_Z | PSW_N | PSW_V)
-        ana m
-        mov m, a
-
         xra a
         ora b
         jm _mov_setaluf_n
         ora c
         jz _mov_setaluf_z
-        ;pop h
-        ;jmp store_dd16
-        ;ret
+        ; clear NZV
+        lxi h, rpsw
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        mov m, a
         lhld vm1_opcode
         jmp store_dd16
+
 _mov_setaluf_n:
-        mvi a, PSW_N
-        ora m
+        ; set N, clear ZV
+        lxi h, rpsw
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        ori PSW_N
         mov m, a
-        ;pop h
-        ;jmp store_dd16
-        ;ret
         lhld vm1_opcode
         jmp store_dd16
+
 _mov_setaluf_z:
-        mvi a, PSW_Z
-        ora m
+        ; set Z, clear NV
+        lxi h, rpsw
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        ori PSW_Z
         mov m, a
-        ;pop h
-        ;jmp store_dd16
-        ;ret
         lhld vm1_opcode
         jmp store_dd16
 
 
 movb_setaluf_and_store:
-;================== YOU ARE ERROR -- for the reference to fix later
         ; aluf N, Z, V = 0  -- if dst is reg, sign extend
-        lxi h, rpsw
-        mvi a, ~(PSW_Z | PSW_N | PSW_V)
-        ana m
-        mov m, a
-
         xra a
         ora c
         jm _movb_setaluf_n
         jz _movb_setaluf_z
-        mvi b, 0  ; positive sign extend
-        ;pop h
+        ; clear NZV, + sex
+        lxi h, rpsw
+        mvi b, 0
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        mov m, a
         lhld vm1_opcode
         jmp store_dd8
-
 _movb_setaluf_n:
-        mvi b, -1 ; sign extend = -1
-        mvi a, PSW_N
-        ora m
+        ; set N, - sex
+        lxi h, rpsw
+        mvi b, -1
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        ori PSW_N
         mov m, a
-        ;pop h
         lhld vm1_opcode
         jmp store_dd8
 _movb_setaluf_z:
+        ; set Z, + sex
+        lxi h, rpsw
         mvi b, 0
-        mvi a, PSW_Z
-        ora m
+        mvi a, ~(PSW_Z | PSW_N | PSW_V)
+        ana m
+        ori PSW_Z
         mov m, a
-        ;pop h
         lhld vm1_opcode
         jmp store_dd8
-;=====================
-         ; aluf N, Z, V = 0  -- if dst is reg, sign extend
-;         lxi h, rpsw
-;         mvi a, ~(PSW_Z | PSW_N | PSW_V)
-;         ana m
-;         mov m, a
-;
-;         mov a, c
-;         ora a
-;         mvi a, PSW_Z
-;         jz $+4
-;         xra a
-;         ora m
-;         mov m, a
-;         mvi b, -1 ; sign extend = -1
-;         mov a, c
-;         add a
-;         mvi a, PSW_N
-;         jc $+5
-;         xra a
-;         mov b, a  ; sign extend = 0
-;         ora m
-;         mov m, a
-;
-;         pop h
-;         jmp store_dd8
-
 
 
 #ifdef TEST_ADDRMODES

@@ -134,8 +134,11 @@ void Memory::write(uint32_t addr, uint8_t w8, bool stackrq)
 #ifndef NODEBUGGER
     if (debug_onwrite) debug_onwrite(bigaddr, w8);
 #endif
+
+#ifdef TRACE_GUEST_WRITES
     if (bigaddr > 0xffff)
         fprintf(stderr, "write(%05x)->%02x\n", bigaddr, w8);
+#endif
 }
 
 void Memory::init_from_vector(const vector<uint8_t> & from, uint32_t start_addr)
