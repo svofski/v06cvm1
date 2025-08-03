@@ -2569,10 +2569,8 @@ opc_jmp:
         mvi a, 70q
         ana e
         jz jmp_trap
-        ;xchg
-        ;call load_dd16  
         call load_de_dd16
-        ;dcx h             ; ignore the operand, use its addr as new pc value
+                           ; ignore the operand, use its addr as new pc value
         shld r7
         ret
 jmp_trap:
@@ -2593,11 +2591,9 @@ opc_jsr:
         ;   R7 = temp
         
         xchg
-        ;push h
           call load_dd16
-          ;dcx h ; h = new address
+                 ; h = new address
           xchg  ; de = EA
-        ;pop h ; hl = opcode
         lhld vm1_opcode
         push d ; save EA
           dad h
@@ -2640,10 +2636,7 @@ opc_clrb:
         jmp clr_aluf_and_ret
 
 opc_com:   
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
-        ;dcx h
         mov a, d
         cma
         mov b, a
@@ -2705,8 +2698,6 @@ _comb_n:
         ret
 
 opc_inc:   
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
         inx d
         call _store_de_hl_addrmode
@@ -2744,8 +2735,6 @@ _inc_n:
         ret
         
 opc_dec:   
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
         dcx d
         call _store_de_hl_addrmode
@@ -2784,8 +2773,6 @@ _dec_n:
         ret
 
 opc_neg:   
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
 
         mov a, d
@@ -2840,10 +2827,8 @@ _neg_n: ; N, not Z -> C --- but maybe also V
 
 opc_adc:   
         ; 0055dd adc dd: dst <- dst + c
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
-        ;dcx h           ; hl = &dst, de = dst
+                         ; hl = &dst, de = dst
 
         mvi b, 0
         lda rpsw
@@ -2891,10 +2876,8 @@ _adc_n:
 
 opc_sbc:   
         ; 0056dd: sbc dd: dst <- dst - C
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
-        ;dcx h           ; hl = &dst, de = dst
+                         ; hl = &dst, de = dst
 
         mvi b, 0
 
@@ -2926,8 +2909,6 @@ opc_sbc:
         jmp adc_no_cin
 
 opc_tst:   
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
@@ -3088,11 +3069,8 @@ _rol_v:
         
 opc_asr:   
         ; 0062dd ASR dd
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
 
-        ;mov c, e    ; remember lsb for ror_aluf
         mvi c, 0    ; temporary flags (see ror_aluf)
         mvi a, $80
         ana d       ; remember msb for sign extend
@@ -3128,11 +3106,8 @@ _asr_xx2:
 
 opc_asl:   
         ; 0063dd
-        ;xchg
-        ;call load_dd16
         call load_de_dd16
 
-        ;mov b, d ; remember msb for rol_aluf
         mvi c, 0
         xchg
         dad h
@@ -3382,11 +3357,9 @@ bit_n:  mvi a, PSW_N
 opc_bic:
         ; 04ssdd bic ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C not touched
         xchg
-        ;push h
-          call load_ss16
-          mov b, d
-          mov c, e        ; bc <- src
-        ;pop h
+        call load_ss16
+        mov b, d
+        mov c, e        ; bc <- src
         lhld vm1_opcode
         push b
           call load_dd16    ; de <- dst, hl = dst+1
@@ -3496,11 +3469,9 @@ opc_bisb:
 
 opc_add:
         xchg
-        ;push h
-          call load_ss16
-          mov b, d
-          mov c, e
-        ;pop h
+        call load_ss16
+        mov b, d
+        mov c, e
         lhld vm1_opcode
         push b
           call load_dd16
@@ -3517,13 +3488,9 @@ opc_add:
           mvi c, PSW_C
           ; overflow flag check: sign(src) == sign(dst) && sign(dst) != sign(result) 
           ;                      sign(b) == sign(d) && sign(d) != sign(h) 
-          ;mvi a, $80
-          ;ana b
           mov a, b
           xra d       ; + --> sign(src) == sign(dst)
           jm _add_no_v
-          ;mvi a, $80
-          ;ana d
           mov a, d
           xra h       ; - --> !=
           jp _add_no_v
@@ -3531,7 +3498,6 @@ opc_add:
           ora c
           mov c, a
 _add_no_v:
-
           xra a
           ora h
           jm _add_n
