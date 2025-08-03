@@ -27,7 +27,7 @@
 #define STORE_BC_TO_HL      call kvazwriteBCeven
 #define STORE_C_TO_HL       call kvazwriteC
 #define STORE_A_TO_HL       mov c, a \ call kvazwriteC
-#define STORE_DE_TO_HL      call kvazwriteDEeven \ inx h
+#define STORE_DE_TO_HL      call kvazwriteDEeven
 #define STORE_E_TO_HL       call kvazwriteE
 #define STORE_BC_TO_HL_REVERSE  dcx h \ call kvazwriteBCeven
 #define STORE_DE_TO_HL_REVERSE  dcx h \ call kvazwriteDEeven
@@ -1728,6 +1728,25 @@ load_dd16:
         mvi d, regfile >> 8
         pchl
 
+        ; opcode in de
+load_de_dd16:
+        ; select addr mode
+        mvi a, 070q
+        ana e
+        sta vm1_addrmode
+          ;jz ldwmode0
+        ral \ ral ; addr mode * 32
+        mov l, a  ; l = lsb load16[addr mode]
+        mvi a, 007q
+        ana e
+        ral
+        mov e, a  ; e = lsb reg16
+        
+        ;xchg
+        mvi h, load16 >> 8
+        mvi d, regfile >> 8
+        pchl
+
         ; same as 16-bit except based on load8
 load_ss8:
         dad h
@@ -1803,7 +1822,7 @@ regfile_end .equ $
         .org ( $ + 0FFH) & 0FF00H ; align 256
 load16:
         ; R
-ldwmode0:
+ldwmode0: 
         xchg
         LOAD_DE_FROM_HL_REG
         dcx h
@@ -2498,8 +2517,9 @@ opc_jmp:
         mvi a, 70q
         ana e
         jz jmp_trap
-        xchg
-        call load_dd16  
+        ;xchg
+        ;call load_dd16  
+        call load_de_dd16
         ;dcx h             ; ignore the operand, use its addr as new pc value
         shld r7
         ret
@@ -2567,8 +2587,9 @@ opc_clrb:
         jmp clr_aluf_and_ret
 
 opc_com:   
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
         ;dcx h
         mov a, d
         cma
@@ -2631,11 +2652,10 @@ _comb_n:
         ret
 
 opc_inc:   
-        xchg
-        call load_dd16
-        ;dcx h
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
         inx d
-        ;STORE_DE_TO_HL
         call _store_de_hl_addrmode
 
         ; aluf NZV
@@ -2671,8 +2691,9 @@ _inc_n:
         ret
         
 opc_dec:   
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
         dcx d
         call _store_de_hl_addrmode
 
@@ -2710,8 +2731,9 @@ _dec_n:
         ret
 
 opc_neg:   
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
 
         mov a, d
         cma
@@ -2765,8 +2787,9 @@ _neg_n: ; N, not Z -> C --- but maybe also V
 
 opc_adc:   
         ; 0055dd adc dd: dst <- dst + c
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
         ;dcx h           ; hl = &dst, de = dst
 
         mvi b, 0
@@ -2775,7 +2798,9 @@ opc_adc:
         jnc adc_no_cin
 
         inx d           ; hl = dst + cin (1)
+        push b
         call _store_de_hl_addrmode
+        pop b
 
         xra a
         ora e
@@ -2815,8 +2840,9 @@ _adc_n:
 
 opc_sbc:   
         ; 0056dd: sbc dd: dst <- dst - C
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
         ;dcx h           ; hl = &dst, de = dst
 
         mvi b, 0
@@ -2832,7 +2858,9 @@ opc_sbc:
         mvi b, PSW_C
 
         dcx d           ; dst <- dst - Cin (1)
+        push b
         call _store_de_hl_addrmode
+        pop b
 
         xra a
         ora b
@@ -2849,8 +2877,9 @@ opc_sbc:
         jmp adc_no_cin
 
 opc_tst:   
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
         ana m
@@ -2895,8 +2924,9 @@ _tstb_n:
 
 opc_ror:   
         ; 0060dd ROR dd
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
 
         mov c, e    ; remember lsb for carry aluf
         
@@ -2910,7 +2940,9 @@ opc_ror:
         mov a, e
         rar
         mov e, a
+        push b
         call _store_de_hl_addrmode
+        pop b
 
         ; aluf NZVC
 ror_aluf:
@@ -2928,8 +2960,9 @@ ror_aluf:
 
 opc_rol:   
         ; 0061dd ROL dd
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
 
         mov b, d ; remember msb
         xchg
@@ -2942,7 +2975,9 @@ opc_rol:
         mov l, a
 
         xchg
+        push b
         call _store_de_hl_addrmode
+        pop b
 rol_aluf:
         ; aluf NZVC
         lxi h, rpsw
@@ -2991,8 +3026,9 @@ _rol_v:
         
 opc_asr:   
         ; 0062dd ASR dd
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
 
         mov c, e    ; remember lsb for ror_aluf
         mvi a, $80
@@ -3009,20 +3045,25 @@ opc_asr:
         mov a, d    ; put sign bit in place
         ora b
         mov d, a
+        push b
         call _store_de_hl_addrmode
+        pop b
         jmp ror_aluf
 
 opc_asl:   
         ; 0063dd
-        xchg
-        call load_dd16
+        ;xchg
+        ;call load_dd16
+        call load_de_dd16
 
         mov b, d ; remember msb for rol_aluf
         xchg
         dad h
 
         xchg
+        push b
         call _store_de_hl_addrmode
+        pop b
         jmp rol_aluf
 
 opc_rorb:
@@ -3932,6 +3973,7 @@ opc_mfpd:
 opc_mtpd:
         ; not in vm1
         rst 1
+
 mov_setaluf_and_store:
         ; aluf N, Z, V = 0
         lxi h, rpsw

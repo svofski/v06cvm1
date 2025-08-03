@@ -33,20 +33,20 @@ kvazreadDE:
                 jz readregDE
                 dcr h
                 push h
-		xchg			;DE=address
-		lxi h,0
-		dad sp			;HL=old SP
-		mvi a,kvazbank
-		di
-		out kvazport
-		xchg			;HL=address, DE=old SP
-		sphl			;SP=address
-		xchg			;HL=old SP
-		pop d			;DE=data
-		xra a
-		out kvazport
-		sphl			;SP=old SP
-		ei
+		  xchg			;DE=address
+		  lxi h,0
+		  dad sp			;HL=old SP
+		  mvi a,kvazbank
+		  di
+		  out kvazport
+		  xchg			;HL=address, DE=old SP
+		  sphl			;SP=address
+		  xchg			;HL=old SP
+		  pop d			;DE=data
+		  xra a
+		  out kvazport
+		  sphl			;SP=old SP
+		  ei
                 pop h
 		ret
 
@@ -86,7 +86,23 @@ kvazreadBC:
                 ;pop d
                 ret
 
-kvazwriteBCeven:
+;kvazwriteDEeven:
+;                mvi a, $fe
+;                ana l
+;                mov l, a
+;                ; [hl] <- de
+;kvazwriteDE:
+;                ;push b
+;                mov b, d
+;                mov c, e
+;                call kvazwriteBC
+;                ;pop b
+;                ;ret
+
+kvazwriteDEeven:
+                mov b, d
+                mov c, e
+kvazwriteBCeven:                  ; 8 + 4 + 8 + 8 + 4 + 12 = 
                 mvi a, $fe
                 ana l
                 mov l, a
@@ -100,39 +116,27 @@ kvazwriteBC:
                 jc jmp_trap
 
                 push h
-                push d
-		xchg			;DE=address
-		lxi h,0
-		dad sp			;HL=old SP
-		mvi a,kvazbank
-		di
-		out kvazport
-		xchg			;HL=address, DE=old SP
-		sphl			;SP=address
-		xchg			;HL=old SP
-		inx sp
-		inx sp			;SP=address+2
-		push b
-		xra a
-		out kvazport
-		sphl			;SP=old SP
-		ei
-                pop d
+                  push d
+		    xchg			;DE=address
+		    lxi h,0
+		    dad sp			;HL=old SP
+		    mvi a,kvazbank
+		    di
+		    out kvazport
+		    xchg			;HL=address, DE=old SP
+		    sphl			;SP=address
+		    xchg			;HL=old SP
+		    inx sp
+		    inx sp			;SP=address+2
+		    push b
+		    xra a
+		    out kvazport
+		    sphl			;SP=old SP
+		    ei
+                  pop d
                 pop h
 		ret
                 
-kvazwriteDEeven:
-                mvi a, $fe
-                ana l
-                mov l, a
-                ; [hl] <- de
-kvazwriteDE:
-                push b
-                mov b, d
-                mov c, e
-                call kvazwriteBC
-                pop b
-                ret
 
 ;Input: address - HL, data - C
 kvazwriteC:
@@ -261,7 +265,7 @@ read_rx_data:
                 ret
 write_tx_data:
   ;;;;;
-  ;hlt ; for benchmark: k prohod 2551657
+  ;hlt ; for benchmark: basic = 7392755
   ;;;;;
                 mov a, c
                 sta tx_data_reg
