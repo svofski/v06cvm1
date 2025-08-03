@@ -266,11 +266,11 @@ write_tx_data:
   ;hlt ; for benchmark: 
   ;;;;;                   basic 
   ;;;;; 10 FORI=1TO1000:NEXTI
-  ;;;;; 20 PRINT"KU!"
+  ;;;;; 20 PRINT"KU!"                 -> 06:46, DVK in b2m emu baseline: 0:4.50
   ;;;;;                   7392755
   ;;;;;                   7368509 lhld vm1 opcode in mov
   ;;;;;                   7368367 fixed movb setaluf, lhldified too
-  ;;;;;                   7368331     -> 06:43
+  ;;;;;                   7368331     -> 06:41        ~ 89.1 x slower
   ;;;;;
                 mov a, c
                 sta tx_data_reg
