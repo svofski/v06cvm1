@@ -1980,7 +1980,7 @@ ldbmode2:
         xchg
         LOAD_DE_FROM_HL_REG ; load register
         push d  ; push EA addr
-          push h  ; save reg addr + 1
+          ;push h  ; save reg addr + 1
             ; R += 1, but R6 and R7 += 2
             inx d
             ; r6, r7 the increment is always 2
@@ -1990,7 +1990,7 @@ ldbmode2:
               inx d
               ; ---- 
 
-          pop h ; h <- reg addr + 1
+          ;pop h ; h <- reg addr + 1
           STORE_DE_TO_HL_REG_REVERSE
         pop h
         LOAD_E_FROM_HL
