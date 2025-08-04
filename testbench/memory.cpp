@@ -135,6 +135,7 @@ void Memory::write(uint32_t addr, uint8_t w8, bool stackrq)
     if (debug_onwrite) debug_onwrite(bigaddr, w8);
 #endif
 
+//#define TRACE_GUEST_WRITES
 #ifdef TRACE_GUEST_WRITES
     if (bigaddr > 0xffff)
         fprintf(stderr, "write(%05x)->%02x\n", bigaddr, w8);

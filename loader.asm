@@ -28,11 +28,13 @@ spinner_template:
 
 msg_loading:
         .db "Loading "
+
 #ifdef BASIC
 filename:
         .db "013-BASIBIN", 0
 rom_start_addr .equ 140000q
 rom_load_addr  .equ 140000q
+#define _FILENAME_DEFINED
 #endif
 
 #ifdef TEST_791401
@@ -40,6 +42,7 @@ filename:
         .db "791401     ", 0
 rom_start_addr .equ 000200q
 rom_load_addr  .equ 000000q
+#define _FILENAME_DEFINED
 #endif
 
 #ifdef TEST_GKAAA0
@@ -47,7 +50,15 @@ filename:
         .db "GKAAA0     ", 0
 rom_start_addr .equ 000200q
 rom_load_addr  .equ 000000q
+#define _FILENAME_DEFINED
 #endif
+
+#ifndef _FILENAME_DEFINED
+filename:
+        .db "           ", 0
+rom_start_addr .equ 02002q
+rom_load_addr  .equ 02000q
+#endif  
 
         .db " $"
 

@@ -27,9 +27,11 @@ kvazreadDEeven:
 ;Input: address - HL
 ;Output: data - DE
 kvazreadDE:
-                inr h
+                ; $fe, ff -> reg
+                mvi a, $fe
+                ana h
+                cpi $fe
                 jz readregDE
-                dcr h
                 push h
 		  xchg			;DE=address
 		  lxi h,0
@@ -57,11 +59,9 @@ kvazreadBCeven:
 ;Output: data - BC
 ; clobbers DE!!!
 kvazreadBC:
-                ;inr h
-                ;jz readregDE
-                ;dcr h
-                mvi a, $ff
-                cmp h
+                mvi a, $fe
+                ana h
+                cpi $fe
                 jz readregDE
 
                 ;push d
@@ -159,17 +159,13 @@ kvazwriteBCeven:                  ; 8 + 4 + 8 + 8 + 4 + 12 =
                 mov l, a
 ;Input: address - HL, data - BC
 kvazwriteBC:
-                mov a, h        ; 8 + 8 + 12 + 8 + 12    vs 8 + 4 + 12 + 8 + 4 + 12
-                cpi $ff
+                mvi a, $fe
+                ana h
+                cpi $fe
                 jz writeregBC
-                cpi (ROM_START >> 8)
-                jnc jmp_trap
-                ;mvi a, $ff
-                ;cmp h
-                ;jz writeregBC
-                ;mvi a, (ROM_START >> 8) - 1
-                ;cmp h
-                ;jc jmp_trap
+                mvi a, (ROM_START >> 8) - 1
+                cmp h
+                jc jmp_trap
 
                 push h
                   push d
@@ -231,7 +227,11 @@ kvazwriteE:
                 ret
 
 readregDE:
-                dcr h        ; restore hl!
+                push h
+                push b
+                lxi b, _readregDE_return
+                push b
+
                 mov a, l
                 cpi 164q  ; 177564 tx control
                 jz read_tx_control
@@ -249,8 +249,19 @@ readregDE:
                 jz read_ps177776
 
                 jmp jmp_trap  ; nonexistent reg
+_readregDE_return:
+                pop b
+                pop h
+                ret
+
 writeregBC:
 writeregC:
+                push h
+                push d
+
+                lxi d, writereg_return
+                push d
+
                 mov a, l
                 cpi 166q   ; 177566 tx data
                 jz write_tx_data
@@ -269,6 +280,11 @@ writeregC:
                 ; rx? dunno
 
                 jmp jmp_trap
+
+writereg_return:
+                pop d
+                pop h
+                ret
 
 tx_control_reg: .db 0         ; 177564
 tx_data_reg:    .db 0         ; 177566

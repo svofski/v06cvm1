@@ -23,6 +23,10 @@ BEGIN {
     printf("uint16_t vm1_exec_addr = 0x%s;\n", $2);
 }
 
+/ rxdrv_csr:/ {
+    printf("uint16_t rxdrv_csr_addr = 0x%s;\n", $2);
+}
+
 
 / test_opcode_table:/ {
     opcode_index = 0;

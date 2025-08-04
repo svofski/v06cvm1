@@ -3,6 +3,8 @@
 #define kvazbank 10h
 #define kvazport 10h
 
+HOST_SP .equ $8000      ; could be even higher  - check microdos
+
         ; test load op16
         ;di
         ;xra a
@@ -115,28 +117,37 @@
         ; install fake call5
         mvi a, $c9
         sta 5
-#else
-        call load_file
-
-        call putsi \ .db 10, 13, "RX11 TEST", 10, 13, "$"
-        ; test rxdrv
-        call rxdrv_mount
-        lxi b, 7 ; #READ+GO
-        call write_rxdrv_csr
-        mvi c, 23    ; sector
-        call write_rxdrv_data
-        mvi c, 65    ; track
-        call write_rxdrv_data
-
-        jmp $
-
 #endif
-        ;jmp test_mov_1
-        ;jmp test_opcodes
 
 #ifdef TEST_SERIOUSLY
+        #ifndef TESTBENCH
+        call load_file
+        #endif
         jmp test_from_000200
 #endif
+
+#ifdef TEST_RXDRV
+        call rxdrv_mount
+        call rxdrv_load_boot
+        jmp vm1_enter_loop
+#endif
+
+
+;        call putsi \ .db 10, 13, "RX11 TEST", 10, 13, "$"
+;        ; test rxdrv
+;        call rxdrv_mount
+;        lxi b, 7 ; #READ+GO
+;        call write_rxdrv_csr
+;        mvi c, 23    ; sector
+;        call write_rxdrv_data
+;        mvi c, 65    ; track
+;        call write_rxdrv_data
+;
+;        jmp $
+
+
+        ;jmp test_mov_1
+        ;jmp test_opcodes
 
 #ifdef TEST_ADDRMODES
         jmp test_addrmodes
@@ -181,7 +192,7 @@ test_from_000200:
         ;lxi h, 200q
         lxi h, rom_start_addr   ; 200q for 791401, 140000q for 013-basic
         shld r7
-        jmp tm1_loop_enter
+        jmp vm1_enter_loop
 #endif
 
 test_mov_1:
@@ -218,8 +229,8 @@ tm1_memcpy:
 tm1_loop_end:
 #endif
 
-tm1_loop_enter:
-        lxi sp, $100
+vm1_enter_loop:
+        lxi sp, HOST_SP
 
 tm1_loop:
 vm1_exec:
@@ -239,7 +250,7 @@ wild_miss:
         xra a
         out kvazport
 wild_fetched:
-        lxi sp, $100
+        lxi sp, HOST_SP
         ei
 
         ;shld vm1_opcode
@@ -314,6 +325,15 @@ vm1int_rsvd_not:
         lxi h, 20q
         jmp tm1_loop_enter_interrupt
 vm1int_iot_not:
+        mvi a, RQ_BPT
+        ana m
+        jz vm1int_bpt_not
+        mvi a, ~RQ_BPT
+        ana m
+        mov m, a
+        lxi h, 14q
+        jmp tm1_loop_enter_interrupt
+vm1int_bpt_not:
         hlt
         jmp $   ; impossible, stop
 
@@ -1379,9 +1399,7 @@ clearmem_l0:
         jnz clearmem_l0
         ret
 
-;#ifndef TESTBENCH
         .include "loader.asm"
-;#endif
         
         ;
         ;
@@ -1410,7 +1428,7 @@ vm1_reset_l1:
 
 
 ;vm1_opcode:     .dw 0
-vm1_opcode .equ $100-2
+vm1_opcode .equ HOST_SP-2
 vm1_addrmode:   .db 0
 
         .org ( $ + 0FFH) & 0FF00H ; align 256
@@ -3388,20 +3406,6 @@ opc_sxt:
         jmp store_dd16
 
 opc_bit:
-;        ; debug BREAK ------ - -   -
-;        lda r7
-;        cpi (10506q & 377q)
-;        jnz notthat
-;        lda r7+1
-;        cpi (10506q >> 8)
-;        jnz notthat
-;        ;hlt
-;        mvi a, $76 ; hlt
-;        sta killswitch
-;notthat:
-;        ; -  --  ----   -------------------
-;killswitch:   nop
-
         ; 03ssdd bit ss, dd: src & dst, N=msb, Z=z, V=0, C not touched
         xchg
         ;push h
@@ -4124,6 +4128,20 @@ opc_mtpd:
         rst 1
 
 opc_real_mov:
+;        ; debug BREAK ------ - -   -
+;        lda r7
+;        cpi (130q & 377q)
+;        jnz notthat
+;        lda r7+1
+;        cpi (130q >> 8)
+;        jnz notthat
+;        ;hlt
+;        mvi a, $76 ; hlt
+;        sta killswitch
+;notthat:
+;        ; -  --  ----   -------------------
+;killswitch:   nop ; want hl = fe78
+
         xchg  ; opcode was in de -> hl
        
         ;call load_ss16

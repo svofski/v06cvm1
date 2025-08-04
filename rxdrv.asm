@@ -12,6 +12,7 @@ RX_DISK_SIZE        .equ SECTOR_SIZE * SECTORS_PER_TRACK * TRACKS
 #define RX_ERROR    $8000
 #define RX_INIT     $4000
 #define RX_GO       $0001
+#define RX_TXRQ     $0080
 
 ; RX11 commands (top 3 bits of CSR)
 #define CMD_FILL    000q
@@ -24,9 +25,21 @@ RX_DISK_SIZE        .equ SECTOR_SIZE * SECTORS_PER_TRACK * TRACKS
 
 
 rxdrv_mount:
+        lxi h, rxdrv_csr
+        mvi a, ~RX_DONE
+        ana m
+        mov m, a
+
         lxi b, imgname
         call open_fcb1
         sta rxdrv_mounted  ; 0 = not mounted
+        ora a
+        rz
+
+        lxi h, rxdrv_csr
+        mvi a, RX_DONE
+        ora m
+        mov m, a
         ret
 
 rxdrv_dismount:
@@ -74,6 +87,32 @@ read_rxdrv_csr:
         ret
 
 read_rxdrv_data:
+        lxi h, rxdrv_bufofs
+        xra a
+        ora m
+        jm _rxdrv_nodata
+        inr m
+        push psw
+          mov l, a
+          mvi h, 0
+          lxi d, dma
+          dad d
+          mov e, m
+          mvi d, 0
+        pop psw
+        jm _rxdrv_clear_txrq ; last byte served (128)
+        ret
+
+_rxdrv_clear_txrq:
+        lxi h, rxdrv_csr
+        mvi a, ~RX_TXRQ
+        ana m
+        ori RX_DONE
+        mov m, a
+        ret
+
+_rxdrv_nodata:
+        lxi d, 0
         ret
 
 _rxdrv_set_track:
@@ -99,11 +138,8 @@ rxdrv_start_command:
         ;mvi m, 0
 
         lda rxdrv_cmd
-        cpi CMD_INIT
-        jz _rxdrv_cmd_init
-
         cpi CMD_READ
-        rz  ; expect paramsies
+        jz _rxdrv_set_txreq     ; expect params, so set Transfer request
 
         cpi CMD_EMPTY
         jz _rxdrv_cmd_empty
@@ -119,17 +155,23 @@ _rxdrv_seterr:
         shld rxdrv_csr
         ret
 
+_rxdrv_cmd_empty:
+        lxi h, rxdrv_bufofs
+        mvi m, 0
+_rxdrv_set_txreq:
+        lxi h, rxdrv_csr
+        mvi a, RX_TXRQ
+        ora m
+        mov m, a
+        ret
 
-_rxdrv_cmd_init:
+_rxdrv_set_done:
         lxi h, rxdrv_csr
         mvi a, RX_DONE
         ora m
         mov m, a
         ret
-_rxdrv_cmd_empty:
-        lxi h, rxdrv_buffer_index
-        mvi m, 0
-        ret
+
 _rxdrv_cmd_write:
 _rxdrv_cmd_fill:
         lxi h, rxdrv_csr
@@ -150,6 +192,7 @@ _rxdrv_read_sector:
         lxi d, SECTORS_PER_TRACK
         call MulAHL_A_DE  ; ahl <- a * de
         lda rxdrv_sector
+        dcr a ; track numbers start with 1
         mov e, a
         mvi d, 0
         dad d       ; sector number = cp/m record number
@@ -157,33 +200,91 @@ _rxdrv_read_sector:
         mov d, h
         mov e, l
 
-        ; dad h     ; h = hl/128, extent
-        ; mov a, h
-        ; sta fcb1+$0c    ; extent
-        ; mvi a, $7f
-        ; ana e           ; record num % 128
-        ; sta fcb1+$20    ; record
-
-        shld fcb1+33
+        ; a decent FCB reference: http://www.gaby.de/cpm/manuals/archive/cpm22htm/ch5.htm#Table_5-2
+        shld fcb1+33  ; random access record for F_READRAND
          
         lxi d, fcb1
         mvi c, F_READRAND
         call BDOS
         ora a
         jnz _rxdrv_seterr
-        ret
-        
 
-rxdrv_csr           .dw 0
-rxdrv_cmd           .db 0
+        jmp _rxdrv_set_done
+
+rxdrv_csr:          .dw 0
+rxdrv_cmd:          .db 0
 rxdrv_track:        .db 0
 rxdrv_sector:       .db 0
 ;rxdrv_drive:        .db 0
 
 rxdrv_go:           .db 0
-rxdrv_buffer_index: .db 0
+rxdrv_bufofs:       .db 0       ; sector buffer read offset during EMPTY
 rxdrv_param_stage:  .db 0
-rxdrv_mounted:      .db 0      ; 0 = not mounted
+rxdrv_mounted:      .db 0       ; 0 = not mounted
+
+#define BOOT_START      02000q
+#define BOOT_ENTRY      (BOOT_START + 002q)
+#define BOOT_UNIT       (BOOT_START + 010q)
+#define BOOT_CSR        (BOOT_START + 026q)
+#define BOOT_LEN_W      ((boot_rom_end - boot_rom) / 2)
+
+boot_rom:
+        .dw 0042130q,                        ; "XD" 
+        .dw 0012706q, BOOT_START,            ; MOV #boot_start, SP 
+        .dw 0012700q, 0000000q,              ; MOV #unit, R0        ; unit number 
+        .dw 0010003q,                        ; MOV R0, R3 
+        .dw 0006303q,                        ; ASL R3 
+        .dw 0006303q,                        ; ASL R3 
+        .dw 0006303q,                        ; ASL R3 
+        .dw 0006303q,                        ; ASL R3 
+        .dw 0012701q, 0177170q,              ; MOV #RXCS, R1        ; csr 
+        .dw 0032711q, 0000040q,              ; BITB #40, (R1)       ; ready? 
+        .dw 0001775q,                        ; BEQ .-4 
+        .dw 0052703q, 0000007q,              ; BIS #READ+GO, R3 
+        .dw 0010311q,                        ; MOV R3, (R1)         ; read & go 
+        .dw 0105711q,                        ; TSTB (R1)            ; xfr ready? 
+        .dw 0100376q,                        ; BPL .-2 
+        .dw 0012761q, 0000001q, 0000002q,    ; MOV #1, 2(R1)        ; sector 
+        .dw 0105711q,                        ; TSTB (R1)            ; xfr ready? 
+        .dw 0100376q,                        ; BPL .-2 
+        .dw 0012761q, 0000001q, 0000002q,    ; MOV #1, 2(R1)        ; track 
+        .dw 0005003q,                        ; CLR R3 
+        .dw 0032711q, 0000040q,              ; BITB #40, (R1)       ; ready? 
+        .dw 0001775q,                        ; BEQ .-4 
+        .dw 0012711q, 0000003q,              ; MOV #EMPTY+GO, (R1)  ; empty & go 
+        .dw 0105711q,                        ; TSTB (R1)            ; xfr, done? 
+        .dw 0001776q,                        ; BEQ .-2 
+        .dw 0100003q,                        ; BPL .+010 
+        .dw 0116123q, 0000002q,              ; MOVB 2(R1), (R3)+    ; move byte 
+        .dw 0000772q,                        ; BR .-012 
+        .dw 0005002q,                        ; CLR R2 
+        .dw 0005003q,                        ; CLR R3 
+        .dw 0012704q, BOOT_START+020q,       ; MOV #START+20, R4 
+        .dw 0005005q,                        ; CLR R5 
+        .dw 0005007q                         ; CLR R7 
+boot_rom_end:
+
+        ; copy bootstrap to 02000 and jmp to 02002
+rxdrv_load_boot:
+        lxi h, boot_rom       ; copy from
+        lxi d, BOOT_START     ; guest addr, boot at 02000
+        mvi a, BOOT_LEN_W
+_rxdrv_1:
+        push psw
+          mov c, m \ inx h \ mov b, m \ inx h
+          xchg
+          STORE_BC_TO_HL
+          xchg
+          inx d \ inx d
+        pop psw
+        dcr a
+        jnz _rxdrv_1
+
+        lxi h, BOOT_ENTRY
+        shld r7
+        ret
+        
+
 
 
 imgname:    .db "RT11SJ01DSK", 0

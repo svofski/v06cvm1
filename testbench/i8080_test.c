@@ -186,7 +186,7 @@ tap_t tapdev;
 void tap_send(tap_t * tap);
 
 
-void dump(const char * ff, size_t ret)
+void dump(const char * ff, size_t ret, uint16_t base = 0)
 {
     kvaz(1);
     fprintf(stderr, "HOST: %s %lu bytes\n", ff, ret);
@@ -194,7 +194,7 @@ void dump(const char * ff, size_t ret)
         fprintf(stderr, "%04x ", i);
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
-                fprintf(stderr, "%02x%c", i8080_hal_memory_read_byte(i+j, true), j == 7 ? '-' : ' ');
+                fprintf(stderr, "%02x%c", i8080_hal_memory_read_byte(base+i+j, true), j == 7 ? '-' : ' ');
             }
             else {
                 fprintf(stderr, "   ");
@@ -203,7 +203,7 @@ void dump(const char * ff, size_t ret)
         fprintf(stderr, "  ");
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
-                int c = i8080_hal_memory_read_byte(i+j, true);
+                int c = i8080_hal_memory_read_byte(base+i+j, true);
                 fprintf(stderr, "%c", (c >= 0x20 && c < 0x7f) ? c : '.');
             }
             else {
@@ -479,6 +479,148 @@ void print_regs()
 
 }
 
+const uint16_t fcb1_addr = 0x5c;
+const int CPM_RECORD_SZ = 128;
+const int CPM_DMA_ADDR = 0x80;
+
+typedef struct
+{
+    uint8_t drive;
+    uint8_t name[8];
+    uint8_t ext[3];
+    uint8_t ex;        // extent
+    uint8_t s1;
+    uint8_t s2;
+    uint8_t rc;        // record count
+    uint8_t d0dn[16];
+    uint8_t cr;        // current record
+    uint8_t ra[3];     // RA record
+} fcb_struct_t;
+
+typedef union {
+    fcb_struct_t fcb;
+    uint8_t bytes[36];
+} fcb_t;
+
+FILE * cpm_files[2];
+
+void get_fcb(int addr, fcb_t * fcb)
+{
+    for (int i = 0; i < sizeof(fcb_t); ++i) {
+        fcb->bytes[i] = i8080_hal_memory_read_byte(addr + i);
+    }
+}
+
+void bdos_fopen()
+{
+    // fcb1 at $5c, filename is 8+3 
+    fcb_t fcb;
+    get_fcb(fcb1_addr, &fcb);
+
+    char filename[13]{};
+    int pos = 0;
+    for (int i = 0; i < 8 && fcb.fcb.name[i] > ' '; ++i) {
+        filename[pos++] = fcb.fcb.name[i];
+    }
+    filename[pos++] = '.';
+    for (int i = 0; i < 8 && fcb.fcb.ext[i] > ' '; ++i) {
+        filename[pos++] = fcb.fcb.ext[i];
+    }
+    filename[pos++] = 0;
+
+    //printf("bdos_open: filename=%s\n", filename);
+    //exit(0);
+    cpm_files[0] = fopen(filename, "r");
+    if (cpm_files[0] == NULL) {
+        fprintf(stderr, "bdos_open: open error, filename=%s\n", filename);
+    }
+    i8080_setreg_a(2);
+}
+
+void bdos_fclose()
+{
+    if (cpm_files[0]) {
+        fclose(cpm_files[0]);
+    }
+    i8080_setreg_a(2);
+}
+
+void bdos_readrand()
+{
+    fcb_t fcb;
+    get_fcb(fcb1_addr, &fcb);
+
+    //for (int i = 0; i < sizeof(fcb); ++i) {
+    //    fprintf(stderr, "%02d:%02x ", i, fcb.bytes[i]);
+    //}
+    //fprintf(stderr, "\nra0-2 %02x %02x %02x", fcb.fcb.ra[0], fcb.fcb.ra[1], fcb.fcb.ra[2]);
+
+
+    uint32_t offset = CPM_RECORD_SZ * (fcb.fcb.ra[0] | (fcb.fcb.ra[1] << 8) | (fcb.fcb.ra[2] << 16));
+    //fprintf(stderr, "\nbdos_readrand: offset=%u\n", offset);
+    int result = fseek(cpm_files[0], offset, SEEK_SET);
+    if (result < 0) {
+        i8080_setreg_a(0xff);
+        return;
+    }
+
+    for (int i = 0, c = 0; i < CPM_RECORD_SZ; ++i) {
+        c = fgetc(cpm_files[0]);
+        if (c < 0) {
+            i8080_setreg_a(0xff);
+            return;
+        }
+        i8080_hal_memory_write_byte(CPM_DMA_ADDR + i, c);
+    }
+
+    dump("LOADED SECTOR DATA", 128, 0x0080);
+
+    i8080_setreg_a(0);
+}
+
+void bdos(int * success)
+{
+    int i, c;
+
+    switch (i8080_regs_c()) {
+        case 2: // putchar
+            attr_guest();
+            putchar((char)i8080_regs_e());
+            attr_host();
+            fflush(stdout);
+            break;
+        case 6: // console input
+            fprintf(stderr, "------------->\n");
+            fflush(stderr);
+            fflush(stdout);
+            c = getchar();
+            i8080_setreg_a(c);
+            fprintf(stderr, "------------- CONSOLE INPUT: %c 0%03o 0x%02x\n", c, c, c);
+            break;
+        case 9: // print $-terminated string
+            attr_guest();
+            for (i = i8080_regs_de(); (c = i8080_hal_memory_read_byte(i)) != '$'; i += 1)
+                putchar(c);
+            *success = 1;
+            fflush(stdout);
+            attr_host();
+            break;
+        case 11: // C_STAT console status
+            i8080_setreg_a(1);
+            i8080_setreg_l(1);
+            break;
+        case 15: // F_OPEN
+            bdos_fopen();
+            break;
+        case 16: // F_CLOSE
+            bdos_fclose();
+            break;
+        case 33: // F_READRAND
+            bdos_readrand();
+            break;
+    }
+}
+
 
 void execute_test(const char* filename, int success_check) {
     //unsigned char* mem = i8080_hal_memory();
@@ -543,6 +685,7 @@ void execute_test(const char* filename, int success_check) {
 
         int opc = find_in_opcode_handlers(pc);
         if (opc != -1) {
+#ifdef EXAMINE_OPCODE_HANDLERS
             int executed_opcode = i8080_hal_memory_read_word(vm1_opcode_addr);
             const char * label = opc_labels[opc];
 
@@ -556,8 +699,14 @@ void execute_test(const char* filename, int success_check) {
                 fprintf(stderr, " ERROR: expected opcode %o %s, actual label: %s\n",
                         executed_opcode, opc_names[index], label);
             }
+#endif
+
+            uint16_t rx11csr = i8080_hal_memory_read_word(rxdrv_csr_addr);
+            fprintf(stderr, "csr: %06o", rx11csr);
 
         }
+
+
 
         //if (mem[pc] == 0xd3) {
         //    fprintf(stderr, "out %d = %02x\n", mem[pc+1], i8080_regs_a());
@@ -568,34 +717,7 @@ void execute_test(const char* filename, int success_check) {
         //}
 
         if (pc == 0x0005) {
-            // handle basic BDOS calls
-            if (i8080_regs_c() == 9) {  // print string
-                int i, c;
-                attr_guest();
-                for (i = i8080_regs_de(); (c = i8080_hal_memory_read_byte(i)) != '$'; i += 1)
-                    putchar(c);
-                success = 1;
-                fflush(stdout);
-                attr_host();
-            }
-            else if (i8080_regs_c() == 2) { // putchar
-                attr_guest();
-                putchar((char)i8080_regs_e());
-                attr_host();
-                fflush(stdout);
-            }
-            else if (i8080_regs_c() == 11) {
-                i8080_setreg_a(1);
-                i8080_setreg_l(1);
-            }
-            else if (i8080_regs_c() == 6) {
-                fprintf(stderr, "------------->\n");
-                fflush(stderr);
-                fflush(stdout);
-                int c = getchar();
-                i8080_setreg_a(c);
-                fprintf(stderr, "------------- CONSOLE INPUT: %c 0%03o 0x%02x\n", c, c, c);
-            }
+            bdos(&success);
         }
 
         int instr_cycles = i8080_instruction();
