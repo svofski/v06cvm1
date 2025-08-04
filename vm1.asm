@@ -1459,13 +1459,7 @@ vm1op00:
         .org ( $ + 0FH) & 0FFF0H ; align 16
 vm1op01: ; 01ssdd mov ss, dd
 opc_mov:
-        xchg  ; opcode was in de -> hl
-        ;push h
-        call load_ss16
-        mov b, d
-        mov c, e
-
-        jmp mov_setaluf_and_store
+        jmp opc_real_mov
 
         .org ( $ + 0FH) & 0FFF0H ; align 16
 vm1op02:
@@ -1522,12 +1516,7 @@ vm1op10:
         .org ( $ + 0FH) & 0FFF0H ; align 16
 vm1op11:
 opc_movb:
-        xchg  ; opcode was in de -> hl
-        ;push h
-        call load_ss8
-        mov b, d
-        mov c, e
-        jmp movb_setaluf_and_store
+        jmp real_opc_movb
         .org ( $ + 0FH) & 0FFF0H ; align 16
 vm1op12:
         jmp opc_cmpb
@@ -1749,6 +1738,33 @@ vm1op10_clrb_tstb:
         dcr a \ jz opc_tstb
         rst 1
 
+        ; does not save vm1_addrmode!
+        ; hl = opcode (xxssdd)
+        ; destroy everything, data in de = SS
+load_ss16_noam:
+        dad h
+        dad h
+        mov l, h
+        ; hl = opcode (xxssdd)
+        ; destroy everything, data in de = DD
+        ;                     dcx h to get data/reg addr
+load_dd16_noam:        
+        ; select addr mode
+        mvi a, 070q
+        ana l
+        ral \ ral ; addr mode * 32
+        mov e, a  ; e = lsb load16[addr mode]
+        mvi a, 007q
+        ana l
+        ral
+        mov l, a  ; l = lsb reg16
+        
+        xchg
+        mvi h, load16 >> 8
+        mvi d, regfile >> 8
+        pchl
+
+        ; saves vm1_addrmode!
         ; hl = opcode (xxssdd)
         ; destroy everything, data in de = SS
 load_ss16:
@@ -1781,7 +1797,6 @@ load_de_dd16:
         mvi a, 070q
         ana e
         sta vm1_addrmode
-          ;jz ldwmode0
         ral \ ral ; addr mode * 32
         mov l, a  ; l = lsb load16[addr mode]
         mvi a, 007q
@@ -1789,11 +1804,32 @@ load_de_dd16:
         ral
         mov e, a  ; e = lsb reg16
         
-        ;xchg
         mvi h, load16 >> 8
         mvi d, regfile >> 8
         pchl
 
+        ; does not save vm1_addrmode
+        ; same as 16-bit except based on load8
+load_ss8_noam:
+        dad h
+        dad h
+        mov l, h
+load_dd8_noam:
+        mvi a, 070q
+        ana l
+        ral \ ral ; addr mode * 32
+        mov e, a  ; e = lsb load16[addr mode]
+        mvi a, 007q
+        ana l
+        ral
+        mov l, a  ; l = lsb reg16
+        
+        xchg
+        mvi h, load8 >> 8
+        mvi d, regfile >> 8
+        pchl
+
+        ; saves vm1_addrmode
         ; same as 16-bit except based on load8
 load_ss8:
         dad h
@@ -2964,9 +3000,29 @@ _tstb_n:
 
 opc_ror:   
         ; 0060dd ROR dd
-        call load_de_dd16
 
-        ;;mov c, e    ; remember lsb for carry aluf
+        ;call load_de_dd16
+        ; ------- inline load_de_dd16 + vm1_addrmode local
+        ; select addr mode
+        mvi a, 070q
+        ana e
+        sta _ror_addrmode ; local!
+        ral \ ral ; addr mode * 32
+        mov l, a  ; l = lsb load16[addr mode]
+        mvi a, 007q
+        ana e
+        ral
+        mov e, a  ; e = lsb reg16
+
+        lxi b, _ror_load_dd16_return
+        push b
+
+        mvi h, load16 >> 8
+        mvi d, regfile >> 8
+        pchl
+_ror_load_dd16_return:
+        ; ------------------------------------------------
+
         mvi c, 0 ; temporary flags
         
         ; load carry
@@ -2981,9 +3037,11 @@ opc_ror:
         mov e, a
         jnc $+5
         mvi c, PSW_C
+
         ;call _store_de_hl_addrmode_bc
 ;;; -------------- macro store_de_hl_addrmode_bc
-        lda vm1_addrmode
+_ror_addrmode .equ $+1
+        mvi a, 0
         ora a
         jz _ror_xx1
         push b
@@ -3005,7 +3063,27 @@ ror_aluf:
 
 opc_rol:   
         ; 0061dd ROL dd
-        call load_de_dd16
+        ;call load_de_dd16
+        ; ------- inline load_de_dd16 + vm1_addrmode local
+        ; select addr mode
+        mvi a, 070q
+        ana e
+        sta _rol_addrmode ; local!
+        ral \ ral ; addr mode * 32
+        mov l, a  ; l = lsb load16[addr mode]
+        mvi a, 007q
+        ana e
+        ral
+        mov e, a  ; e = lsb reg16
+
+        lxi b, _rol_load_dd16_return
+        push b
+
+        mvi h, load16 >> 8
+        mvi d, regfile >> 8
+        pchl
+_rol_load_dd16_return:
+        ; ------------------------------------------------
 
         mvi c, 0
         xchg
@@ -3024,7 +3102,8 @@ opc_rol:
 
 ;;; -------------- macro store_de_hl_addrmode_bc
 
-        lda vm1_addrmode
+_rol_addrmode .equ $+1
+        mvi a, 0
         ora a
         jz _rol_xx1
         push b
@@ -3326,14 +3405,14 @@ opc_bit:
         ; 03ssdd bit ss, dd: src & dst, N=msb, Z=z, V=0, C not touched
         xchg
         ;push h
-          call load_ss16
+          call load_ss16_noam
           mov b, d        ; bc <- src
           mov c, e
         ;pop h
         lhld vm1_opcode
 
         ;push b
-          call load_dd16    ; de <- dst
+          call load_dd16_noam    ; de <- dst
         ;pop b
         mov a, b
         ana d
@@ -3367,7 +3446,7 @@ bit_n:  mvi a, PSW_N
 opc_bic:
         ; 04ssdd bic ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C not touched
         xchg
-        call load_ss16
+        call load_ss16_noam
         mov b, d
         mov c, e        ; bc <- src
         lhld vm1_opcode
@@ -3391,7 +3470,7 @@ opc_bis:
         ; 05ssdd bis ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
         xchg
         ;push h
-          call load_ss16
+          call load_ss16_noam
           mov b, d
           mov c, e
         ;pop h
@@ -3413,12 +3492,12 @@ opc_bitb:
         ; 13ssdd bitb ss, dd: src & dst, N=msb, Z=z, V=0, C no touchy
         xchg
         ;push h
-          call load_ss8
+          call load_ss8_noam
           mov c, e        ; <- src
         ;pop h
         lhld vm1_opcode
         push b
-          call load_dd8
+          call load_dd8_noam
         pop b
         mov a, c
         ana e
@@ -3446,7 +3525,7 @@ opc_bicb:
         ; 14ssdd bicb ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C no touchy
         xchg
         ;push h
-          call load_ss8
+          call load_ss8_noam
           mov c, e
         ;pop h
         lhld vm1_opcode
@@ -3464,7 +3543,7 @@ opc_bisb:
         ; 15ssdd bisb ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
         xchg
         ;push h
-          call load_ss8
+          call load_ss8_noam
           mov c, e
         ;pop h
         lhld vm1_opcode
@@ -3479,7 +3558,7 @@ opc_bisb:
 
 opc_add:
         xchg
-        call load_ss16
+        call load_ss16_noam
         mov b, d
         mov c, e
         lhld vm1_opcode
@@ -3535,7 +3614,7 @@ _add_flags_done:
 
 opc_sub:
         xchg
-          call load_ss16
+          call load_ss16_noam
           mov b, d
           mov c, e
         lhld vm1_opcode
@@ -3577,14 +3656,14 @@ opc_cmp:
         ; 02ssdd CMP ss, dd   src - dst -> flags
         xchg
         ;push h
-          call load_ss16
+          call load_ss16_noam
           mov b, d
           mov c, e        ; bc <- src
         ;pop h
         lhld vm1_opcode
 
         ;push b
-          call load_dd16  ; de <- dst
+          call load_dd16_noam  ; de <- dst
         ;pop b
         
 
@@ -3643,12 +3722,12 @@ opc_cmpb:
         ; 12ssdd CMP ss, dd  src - dst -> flags
         xchg
         ;push h
-          call load_ss8
+          call load_ss8_noam
           mov c, e      ; c <- src
         ;pop h
         lhld vm1_opcode
         push b
-          call load_dd8   ; e <- dst
+          call load_dd8_noam   ; e <- dst
         pop b
         ; src - dst
         mov a, c
@@ -3704,7 +3783,7 @@ opc_xor:
         ana h
         mov h, a
         push h
-          call load_ss16
+          call load_ss16_noam
           mov b, d
           mov c, e
         pop h
@@ -4044,6 +4123,33 @@ opc_mtpd:
         ; not in vm1
         rst 1
 
+opc_real_mov:
+        xchg  ; opcode was in de -> hl
+       
+        ;call load_ss16
+        ;; -- inline load_ss16
+        dad h
+        dad h
+        ; select addr mode
+        mvi a, 070q
+        ana h
+        ral \ ral ; addr mode * 32
+        mov l, a  ; e = lsb load16[addr mode]
+        mvi a, 007q
+        ana h
+        ral
+        mov e, a  ; l = lsb reg16
+        
+        lxi b, _mov_ss16_loaded
+        push b
+
+        mvi h, load16 >> 8
+        mvi d, regfile >> 8
+        pchl
+        ;; -------------------
+_mov_ss16_loaded:
+        mov b, d
+        mov c, e
 mov_setaluf_and_store:
         xra a
         ora b
@@ -4078,7 +4184,30 @@ _mov_setaluf_z:
         lhld vm1_opcode
         jmp store_dd16
 
+real_opc_movb:
+        xchg  ; opcode was in de -> hl
+        ;call load_ss8
+        ; ----- inline load_ss8
+        dad h
+        dad h
+        mvi a, 070q
+        ana h
+        ral \ ral ; addr mode * 32
+        mov l, a  ; e = lsb load16[addr mode]
+        mvi a, 007q
+        ana h
+        ral
+        mov e, a  ; l = lsb reg16
 
+        lxi b, _movb_ss8_loaded   ; if no interrupts we could just lxi sp, <place with good return address>
+        push b
+        
+        mvi h, load8 >> 8
+        mvi d, regfile >> 8
+        pchl
+        ; ---------------------
+_movb_ss8_loaded:
+        mov c, e
 movb_setaluf_and_store:
         ; aluf N, Z, V = 0  -- if dst is reg, sign extend
         xra a
