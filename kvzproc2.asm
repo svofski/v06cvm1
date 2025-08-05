@@ -1,4 +1,8 @@
+#ifdef BASIC
 #define ROM_START $c000
+#endif
+
+#define IO_MSB $f4    ; 172000 and up
 
 ;		.org 100h
 
@@ -27,10 +31,9 @@ kvazreadDEeven:
 ;Input: address - HL
 ;Output: data - DE
 kvazreadDE:
-                ; $fe, ff -> reg
-                mvi a, $fe
+                mvi a, IO_MSB
                 ana h
-                cpi $fe
+                cpi IO_MSB
                 jz readregDE
                 push h
 		  xchg			;DE=address
@@ -59,9 +62,9 @@ kvazreadBCeven:
 ;Output: data - BC
 ; clobbers DE!!!
 kvazreadBC:
-                mvi a, $fe
+                mvi a, IO_MSB
                 ana h
-                cpi $fe
+                cpi IO_MSB
                 jz readregDE
 
                 ;push d
@@ -159,14 +162,15 @@ kvazwriteBCeven:                  ; 8 + 4 + 8 + 8 + 4 + 12 =
                 mov l, a
 ;Input: address - HL, data - BC
 kvazwriteBC:
-                mvi a, $fe
+                mvi a, IO_MSB
                 ana h
-                cpi $fe
+                cpi IO_MSB
                 jz writeregBC
+#ifdef ROM_START
                 mvi a, (ROM_START >> 8) - 1
                 cmp h
                 jc jmp_trap
-
+#endif
                 push h
                   push d
 		    xchg			;DE=address

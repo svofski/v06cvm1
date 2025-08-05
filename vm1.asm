@@ -88,6 +88,7 @@ HOST_SP .equ $8000      ; could be even higher  - check microdos
 #define RQ_RPLY   16
 #define RQ_HALT   32
 #define RQ_RSVD   64  ; nonexistent instruction
+#define RQ_IORX   128 ; RX floppy - vector 240
         
 #ifdef NOOOOOO
         lxi d, $1234
@@ -334,6 +335,15 @@ vm1int_iot_not:
         lxi h, 14q
         jmp tm1_loop_enter_interrupt
 vm1int_bpt_not:
+        mvi a, RQ_IORX
+        ana m
+        jz vm1int_iorx_not
+        mvi a, ~RQ_IORX
+        ana m
+        mov m, a
+        lxi h, 264q   ; RX drive interrupt vector
+        jmp tm1_loop_enter_interrupt
+vm1int_iorx_not:
         hlt
         jmp $   ; impossible, stop
 
@@ -1123,10 +1133,10 @@ rst1_handler:
 
         ;; trap to 10
 
-        ;lxi h, intflg
-        ;mvi a, RQ_RSVD
-        ;ora m
-        ;mov m, a
+        lxi h, intflg
+        mvi a, RQ_RSVD
+        ora m
+        mov m, a
         ;pop psw         ; drop normal return addr
         ret
 
@@ -3898,9 +3908,19 @@ opx_interrupt:
         xchg
         inx h \ inx h
         LOAD_DE_FROM_HL
-        mov l, e
-        mvi h, 0
-        shld rpsw
+
+        ; load nzvc but don't touch the rest
+        mvi a, $f
+        ana e
+        mov e, a      ; mask nzvc from vector
+        lxi h, rpsw
+        mvi a, $f0
+        ana m
+        ora e         ; set nzvc from vector
+        mov m, a
+        ;mov l, e
+        ;mvi h, 0
+        ;shld rpsw
         ret
 
 

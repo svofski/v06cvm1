@@ -10,9 +10,10 @@ RX_DISK_SIZE        .equ SECTOR_SIZE * SECTORS_PER_TRACK * TRACKS
 ; RX11 status flags
 #define RX_DONE     $0020
 #define RX_ERROR    $8000
-#define RX_INIT     $4000
+#define RX_INIT     $4000   ;; init command
 #define RX_GO       $0001
-#define RX_TXRQ     $0080
+#define RX_TXRQ     $0080   ;; transfer request
+#define RX_INTE     $0040   ;; interrupt enable
 
 ; RX11 commands (top 3 bits of CSR)
 #define CMD_FILL    000q
@@ -50,8 +51,20 @@ rxdrv_dismount:
         mvi m, 0
         jmp close_fcb1
 
-
 write_rxdrv_csr:
+        ; 
+        mvi a, RX_INIT >> 8
+        ana b
+        jnz _rxdrv_init
+        ; update INTE flag in CSR
+        lxi h, rxdrv_csr
+        mvi a, ~RX_INTE
+        ana m
+        mov m, a
+        mvi a, RX_INTE
+        ana c
+        ora m
+        mov m, a
         ; rxdrv_cmd = (value >> 1) & 7
         xra a
         ora c
@@ -63,7 +76,15 @@ write_rxdrv_csr:
         mvi a, RX_GO
         ana c
         sta rxdrv_go
-        jnz rxdrv_start_command
+        cnz rxdrv_start_command
+
+        lxi h, rxdrv_csr
+        mvi a, RX_INTE
+        ana m
+        jz  _rxdrv_clr_int
+        mvi a, RX_DONE
+        ana m
+        jnz _rxdrv_set_int
         ret
 
         ; data in BC
@@ -134,9 +155,6 @@ rxdrv_start_command:
         ana m
         mov m, a
 
-        ;lxi h, rxdrv_param_stage
-        ;mvi m, 0
-
         lda rxdrv_cmd
         cpi CMD_READ
         jz _rxdrv_set_txreq     ; expect params, so set Transfer request
@@ -149,6 +167,35 @@ rxdrv_start_command:
 
         cpi CMD_FILL
         jz _rxdrv_cmd_fill
+
+
+_rxdrv_init:
+        call _rxdrv_clr_int
+        lxi h, 0
+        shld rxdrv_csr
+        xra a
+        sta rxdrv_cmd
+        sta rxdrv_track
+        sta rxdrv_sector
+        sta rxdrv_go
+        sta rxdrv_bufofs
+        sta rxdrv_param_stage
+        ret
+
+_rxdrv_clr_int:
+        lxi h, intflg
+        mvi a, ~RQ_IORX
+        ana m
+        mov m, a
+        ret
+
+_rxdrv_set_int:
+        lxi h, intflg
+        mvi a, RQ_IORX
+        ora m
+        mov m, a
+        ret
+
 
 _rxdrv_seterr:
         lxi h, RX_ERROR | RX_DONE
@@ -170,7 +217,10 @@ _rxdrv_set_done:
         mvi a, RX_DONE
         ora m
         mov m, a
-        ret
+        mvi a, RX_INTE ; interrupt enabled?
+        ana m
+        rz
+        jmp _rxdrv_set_int
 
 _rxdrv_cmd_write:
 _rxdrv_cmd_fill:

@@ -186,10 +186,14 @@ tap_t tapdev;
 void tap_send(tap_t * tap);
 
 
-void dump(const char * ff, size_t ret, uint16_t base = 0)
+// message ff
+// ret number of bytes
+// base base addr
+// guest = 0: print cp/m memory, guest = 1 print pdp-11 memory
+void dump(const char * ff, size_t ret, uint16_t base = 0, int guest = 1)
 {
-    kvaz(1);
-    fprintf(stderr, "HOST: %s %lu bytes\n", ff, ret);
+    kvaz(guest);
+    fprintf(stderr, "%s: %s %lu bytes\n", guest ? "PDP-11" : "CP/M", ff, ret);
     for (int i = 0; i < ret + 16; i += 16) {
         fprintf(stderr, "%04x ", i);
         for (int j = 0; j < 16; ++j) {
@@ -573,7 +577,8 @@ void bdos_readrand()
         i8080_hal_memory_write_byte(CPM_DMA_ADDR + i, c);
     }
 
-    dump("LOADED SECTOR DATA", 128, 0x0080);
+    fprintf(stderr, "\nLOADED SECTOR ofs=%06x ", offset);
+    dump("", 128, 0x0080, 0);
 
     i8080_setreg_a(0);
 }
@@ -702,8 +707,11 @@ void execute_test(const char* filename, int success_check) {
 #endif
 
             uint16_t rx11csr = i8080_hal_memory_read_word(rxdrv_csr_addr);
-            fprintf(stderr, "csr: %06o", rx11csr);
-
+            fprintf(stderr, "rx csr: %06o", rx11csr);
+            //if (rx11csr & 0100) {
+            //    fprintf(stderr, " interrupt enabled, ha!\n");
+            //    exit(0);
+            //}
         }
 
 
