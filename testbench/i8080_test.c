@@ -655,6 +655,7 @@ void execute_test(const char* filename, int success_check) {
         //tap_loop(&tapdev, cycles);
 
         int const pc = i8080_pc();
+        //fprintf(stderr, "PC=%04x\n", pc);
         if (i8080_hal_memory_read_byte(pc) == 0x76 || i8080_hal_memory_read_byte(pc) == 0xc7) {
             fprintf(stderr, "\nHLT at %04X Total: %lu cycles. ", pc, cycles);
             fprintf(stderr, "A=%02x BC=%04x DE=%04x HL=%04x SP=%04x\n",

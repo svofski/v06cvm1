@@ -169,10 +169,9 @@ rxdrv_start_command:
         jz _rxdrv_cmd_fill
 
 
+rxdrv_init:
 _rxdrv_init:
         call _rxdrv_clr_int
-        lxi h, 0
-        shld rxdrv_csr
         xra a
         sta rxdrv_cmd
         sta rxdrv_track
@@ -180,18 +179,25 @@ _rxdrv_init:
         sta rxdrv_go
         sta rxdrv_bufofs
         sta rxdrv_param_stage
+
+        lxi h, RX_DONE
+        shld rxdrv_csr
         ret
 
 _rxdrv_clr_int:
-        lxi h, intflg
-        mvi a, ~RQ_IORX
+        lxi h, intflg_io
+        mvi a, ~IORQ_RX
         ana m
         mov m, a
         ret
 
 _rxdrv_set_int:
         lxi h, intflg
-        mvi a, RQ_IORX
+        mvi a, RQ_IORQ
+        ora m
+        mov m, a
+        inx h
+        mvi a, IORQ_RX
         ora m
         mov m, a
         ret

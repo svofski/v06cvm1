@@ -88,8 +88,13 @@ HOST_SP .equ $8000      ; could be even higher  - check microdos
 #define RQ_RPLY   16
 #define RQ_HALT   32
 #define RQ_RSVD   64  ; nonexistent instruction
-#define RQ_IORX   128 ; RX floppy - vector 240
-        
+#define RQ_IORQ   128 ; i/o request check intflg_io
+
+; bits for intflg_io
+#define IORQ_RX   1   ; RX  floppy - vector 240i
+#define IORQ_XCSR 2   ; XCSR 177564 / XBUF 177566 - vector 64   DLV11 Channel 3 receiver (bit #100, @#177564)
+#define IORQ_RCSR 4   ; RCSR 177560 / RBUF 177562 - vector 60   DLV11 Channel 3 transmitter 
+
 #ifdef NOOOOOO
         lxi d, $1234
         call assert_de_equals
@@ -274,7 +279,6 @@ vm1_exec_return:
         lda intflg
         ora a
         jz tm1_loop_end
-
         lxi h, intflg
         mvi a, RQ_EMT
         ana m
@@ -335,17 +339,72 @@ vm1int_iot_not:
         lxi h, 14q
         jmp tm1_loop_enter_interrupt
 vm1int_bpt_not:
-        mvi a, RQ_IORX
+        mvi a, RQ_IORQ
         ana m
-        jz vm1int_iorx_not
-        mvi a, ~RQ_IORX
+        jz vm1int_iorq_not
+        ;mvi a, ~RQ_IORQ
+        ;ana m
+        ;mov m, a
+        ;lxi h, 264q   ; RX drive interrupt vector
+          ; IO rq
+          inx h ; &intflg_io
+          mvi a, IORQ_RX
+          ana m
+          jnz vm1int_iorq_rx
+          mvi a, IORQ_XCSR
+          ana m
+          jnz vm1int_iorq_xcsr
+          mvi a, IORQ_RCSR
+          jnz vm1int_iorq_rcsr
+        
+        ; if RQ_IORQ was raised but none of IORQ_* are set, drop RQ_IORQ flag and continue
+        dcx h ; &intflg
+        mvi a, ~RQ_IORQ
         ana m
         mov m, a
-        lxi h, 264q   ; RX drive interrupt vector
-        jmp tm1_loop_enter_interrupt
-vm1int_iorx_not:
-        hlt
+        jmp tm1_loop_end
+
+vm1int_iorq_not:
+        hlt     
         jmp $   ; impossible, stop
+
+          ;
+          ; cleanup iorq
+          ; 
+vm1int_iorq_update:
+          lxi h, intflg_io
+          xra a
+          ora m
+          rnz               ; some interrupts unserved, continue
+          dcx h ; &intflg
+          mvi a, ~RQ_IORQ   ; reset IORQ if no pending IO interrupts
+          ana m
+          mov m, a
+          ret
+
+vm1int_iorq_rx:
+        mvi a, ~IORQ_RX     ; clear intflg_io.IORQ_RX
+        ana m
+        mov m, a
+        call vm1int_iorq_update
+        lxi h, 0264q         ; RX vector 264
+        jmp tm1_loop_enter_interrupt
+
+vm1int_iorq_xcsr:
+        mvi a, ~IORQ_XCSR
+        ana m
+        mov m, a
+        call vm1int_iorq_update
+        lxi h, 064q         ; XCSR vector 64
+        jmp tm1_loop_enter_interrupt
+vm1int_iorq_rcsr:
+        mvi a, ~IORQ_RCSR
+        ana m
+        mov m, a
+        call vm1int_iorq_update
+        lxi h, 060q         ; RCSR vector 60
+        jmp tm1_loop_enter_interrupt
+
 
 tm1_loop_enter_interrupt:
         lxi d, tm1_loop_end
@@ -361,7 +420,7 @@ tm1_loop_end:
 #endif
 
         ;ALIGN_16
-        .org 1000q
+        ; why is this here? .org 1000q
 test_mov1_pgm:
 #ifdef TEST_MOV
         .dw 012700q, 1    ; mov #1, r0
@@ -1924,7 +1983,8 @@ r6:     .dw 0
 r7:     .dw 0
 rpsw:   .dw 0
 
-intflg: .db 0
+intflg:     .db 0
+intflg_io:  .db 0
 
 regfile_end .equ $
 
@@ -2305,6 +2365,11 @@ stbmode3: ; **reg16[dst] = C, reg16[dst] += 2
 stbmode4:
         ; reg16[dst] -= 1, *reg16[dst] = BC
         dcx d                 ; de = reg16[dst] - 1
+        ; r6, r7 the decrement is always 2
+          mvi a, r5 & 255
+          cmp l
+          jp $+4
+          dcx d
         STORE_DE_TO_HL_REG    ; reg16[dst] -= 1
         xchg
         JMP_STORE_C_TO_HL
@@ -3864,7 +3929,10 @@ opc_iot:
         mvi a, RQ_IOT
         jmp _raise_irq_a
 opc_reset:  
-        rst 1
+        call rcsr_init
+        call xcsr_init
+        call rxdrv_init
+        ret
 opc_emt:
         mvi a, RQ_EMT
         jmp _raise_irq_a
