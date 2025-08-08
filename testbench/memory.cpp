@@ -7,6 +7,9 @@
 #include "memory.h"
 #include "i8080.h"
 
+//#define TRACE_GUEST_WRITES
+//#define TRACE_GUEST_READS
+
 using namespace std;
 
 Memory::Memory() : mode_stack(false), mode_map(false), page_map(0),
@@ -87,6 +90,11 @@ uint8_t Memory::read(uint32_t addr, bool stackrq, const bool _is_opcode) const
     }
 #endif
 
+#ifdef TRACE_GUEST_READS
+    if (bigaddr > 0xffff)
+        fprintf(stderr, "R[%05x->%02x] ", bigaddr, value);
+#endif
+
     //if (bigaddr > 0xffff)
     //    printf("read(%05x)->%02x\n", bigaddr, value);
 
@@ -135,10 +143,9 @@ void Memory::write(uint32_t addr, uint8_t w8, bool stackrq)
     if (debug_onwrite) debug_onwrite(bigaddr, w8);
 #endif
 
-//#define TRACE_GUEST_WRITES
 #ifdef TRACE_GUEST_WRITES
     if (bigaddr > 0xffff)
-        fprintf(stderr, "write(%05x)->%02x\n", bigaddr, w8);
+        fprintf(stderr, "W[%05x<-%02x] ", bigaddr, w8);
 #endif
 }
 

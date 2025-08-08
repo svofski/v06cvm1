@@ -78,8 +78,10 @@ HOST_SP .equ $8000      ; could be even higher  - check microdos
 #define PSW_Z           4      ; Zero result
 #define PSW_N           8      ; Negative result
 #define PSW_T           16     ; Trap/Debug
-#define PSW_P           0200   ; Priority
-#define PSW_HALT        0400   ; Halt
+#define PSW_P           0200q   ; Priority       LSI-11 IPL bits 7-5, 0340 = IPL 7, 0200 ~ IPL 4
+#define PSW_HALT        0400q   ; Halt
+
+
 
 #define RQ_EMT    1
 #define RQ_TRAP   2
@@ -276,6 +278,10 @@ wild_fetched:
 
 vm1_exec_return:
         ; process interruptsies
+        lda intflg_io
+        ani IORQ_XCSR|IORQ_RCSR
+        cnz console_poll
+
         lda intflg
         ora a
         jz tm1_loop_end
@@ -342,10 +348,13 @@ vm1int_bpt_not:
         mvi a, RQ_IORQ
         ana m
         jz vm1int_iorq_not
-        ;mvi a, ~RQ_IORQ
-        ;ana m
-        ;mov m, a
-        ;lxi h, 264q   ; RX drive interrupt vector
+        ;
+        ; check P
+        ;
+        lda rpsw
+        ani PSW_P
+        jnz tm1_loop_end  ; ignore IO while P bit set
+
           ; IO rq
           inx h ; &intflg_io
           mvi a, IORQ_RX
@@ -2144,21 +2153,18 @@ ldbmode1:
         ; (R)+
 ldbmode2:
         xchg
-        LOAD_DE_FROM_HL_REG ; load register
+        LOAD_DE_FROM_HL_REG ; load register, inx h
         push d  ; push EA addr
-          ;push h  ; save reg addr + 1
             ; R += 1, but R6 and R7 += 2
             inx d
-            ; r6, r7 the increment is always 2
-              mvi a, r5 & 255
-              cmp l   ; &r5 - l
+              mvi a, (r5 + 1) & 255  ; +1 because FROM_HL_REG leaves hl + 1
+              cmp l   ; (&r5 + 1) - (&R + 1)
               jp $+4
               inx d
               ; ---- 
 
-          ;pop h ; h <- reg addr + 1
           STORE_DE_TO_HL_REG_REVERSE
-        pop h
+        pop h ; restore EA addr      -- TODO: optimize away push/pop, but tests cover byte ops poorly
         JMP_LOAD_E_FROM_HL
 
         .org load8 + (32*3)
@@ -2185,18 +2191,18 @@ ldbmode3:
         ; -(R)
 ldbmode4:  
         xchg
-        LOAD_DE_FROM_HL_REG
+        LOAD_DE_FROM_HL_REG ; load register, inx h
+        ; hl = reg addr + 1
         ; R -= 1
         dcx d
         ; r6, r7 the decrement is always 2
-          mvi a, r5 & 255
-          cmp l   ; &r5 - l
+          mvi a, (r5 + 1) & 255  ; +1 because FROM_HL_REG leaves hl + 1
+          cmp l   ; (&r5 + 1) - (&R + 1)
           jp $+4
           dcx d
           ; --- 
         STORE_DE_TO_HL_REG_REVERSE
         xchg                    ; hl = reg
-        ;mov e, m
         JMP_LOAD_E_FROM_HL
         
         .org load8 + (32*5)
@@ -2217,7 +2223,7 @@ ldbmode5:
 ldbmode6:
         push d
           lhld r7
-          LOAD_DE_FROM_HL         ; hidden inx h
+          LOAD_DE_FROM_HL
           inx h \ inx h           ; = pc + 2
           shld r7
         pop h
@@ -2248,10 +2254,10 @@ stwmode1: ; *reg16[dst] = BC
 
         .org store16 + (32*2)
 stwmode2: ; *reg16[dst] = BC, reg16[dst] += 2
-        xchg                  ; hl = reg16[dst]
+        xchg                  ; hl <- R
         STORE_BC_TO_HL
-        inx h \ inx h
-        xchg                  ; hl = &reg16[dst], de = reg16[dst] + 2
+        inx h \ inx h         ; R <- R + 2
+        xchg                  ; hl <- &R, de <- R
         STORE_DE_TO_HL_REG
         ret
 
@@ -2338,14 +2344,15 @@ stbmode1: ; *reg16[dst] = BC
         JMP_STORE_C_TO_HL
 
         .org store8 + (32*2)
+        ; de = R, hl = &R, bc = value
 stbmode2: ; *reg16[dst] = C, reg16[dst] += 1
-        xchg                  ; hl = reg16[dst], de = &reg16[dst]
-        STORE_C_TO_HL
-        xchg
+        xchg                  ; hl <- R, de <- &R
+        STORE_C_TO_HL         ; hl doesn't change
+        xchg                  ; hl <- &R, de <- R
         inx d                 ; R += 1
 
-        mvi a, r5 & 255
-        cmp l
+        mvi a, r5 & 255       ; 
+        cmp l                 ; &r5 - &R: r4: +, r5: +z, r6: -
         jp $+4
         inx d               ; R += 2 for SP, PC
 
@@ -2366,8 +2373,8 @@ stbmode4:
         ; reg16[dst] -= 1, *reg16[dst] = BC
         dcx d                 ; de = reg16[dst] - 1
         ; r6, r7 the decrement is always 2
-          mvi a, r5 & 255
-          cmp l
+          mvi a, r5 & 255 
+          cmp l               ; &r5 - &R: r4: +, r5: +z, r6: -
           jp $+4
           dcx d
         STORE_DE_TO_HL_REG    ; reg16[dst] -= 1
@@ -2550,6 +2557,9 @@ opc_rts:
         ret
 
 opc_rtt:  
+        ; TODO inhibits Trace Trap.
+        ; if new PS has T bit set, trap will occur after execution of
+        ; first instruction after RTT
         nop
 opc_rti:  
         lhld r6
@@ -3071,7 +3081,7 @@ _tst_n:
 
 opc_tstb:
         xchg
-        call load_dd8
+        call load_dd8_noam
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
         ana m
@@ -3975,20 +3985,20 @@ opx_interrupt:
         shld r7
         xchg
         inx h \ inx h
-        LOAD_DE_FROM_HL
+        LOAD_DE_FROM_HL   ; de <- PS
 
-        ; load nzvc but don't touch the rest
-        mvi a, $f
-        ana e
-        mov e, a      ; mask nzvc from vector
-        lxi h, rpsw
-        mvi a, $f0
-        ana m
-        ora e         ; set nzvc from vector
-        mov m, a
-        ;mov l, e
-        ;mvi h, 0
-        ;shld rpsw
+        ; load nzvc but don't touch the rest --- why?
+        ;mvi a, $f
+        ;ana e
+        ;mov e, a      ; mask nzvc from vector
+        ;lxi h, rpsw
+        ;mvi a, $f0
+        ;ana m
+        ;ora e         ; set nzvc from vector
+        ;mov m, a
+
+        xchg
+        shld rpsw
         ret
 
 

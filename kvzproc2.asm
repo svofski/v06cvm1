@@ -432,6 +432,14 @@ txstrbuf:       .db 0, '$'
 XCSR_INTE       .equ 0100q  ; transmit interrupt enable, XCSR 177564, vector 64
 XCSR_VEC        .equ 000064q
 
+
+console_poll:   
+                lxi h, tx_control_reg
+                mvi a, XCSR_INTE
+                ana m
+                rz
+                jmp _xcsr_set_int
+
 write_tx_control:
                 ; 
                 mvi a, XCSR_INTE

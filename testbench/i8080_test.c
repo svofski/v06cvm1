@@ -577,7 +577,10 @@ void bdos_readrand()
         i8080_hal_memory_write_byte(CPM_DMA_ADDR + i, c);
     }
 
-    fprintf(stderr, "\nLOADED SECTOR ofs=%06x ", offset);
+    fprintf(stderr, "\nLOADED SECTOR T:%02d S:%02d ofs=%06x ", 
+            i8080_hal_memory_read_byte(rxdrv_track_addr),
+            i8080_hal_memory_read_byte(rxdrv_sector_addr),
+            offset);
     dump("", 128, 0x0080, 0);
 
     i8080_setreg_a(0);
@@ -708,7 +711,11 @@ void execute_test(const char* filename, int success_check) {
 #endif
 
             uint16_t rx11csr = i8080_hal_memory_read_word(rxdrv_csr_addr);
-            fprintf(stderr, "rx csr: %06o", rx11csr);
+            uint8_t rcsr = i8080_hal_memory_read_byte(rx_control_reg_addr);
+            uint8_t xcsr = i8080_hal_memory_read_byte(tx_control_reg_addr);
+
+            fprintf(stderr, "rx csr: %06o rcsr: %03o xcsr: %03o", rx11csr, rcsr, xcsr);
+
             //if (rx11csr & 0100) {
             //    fprintf(stderr, " interrupt enabled, ha!\n");
             //    exit(0);

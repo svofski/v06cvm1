@@ -78,6 +78,7 @@ write_rxdrv_csr:
         sta rxdrv_go
         cnz rxdrv_start_command
 
+        ; clear interrupt if not INTE, set interrupt if INTE and DONE
         lxi h, rxdrv_csr
         mvi a, RX_INTE
         ana m
@@ -204,9 +205,11 @@ _rxdrv_set_int:
 
 
 _rxdrv_seterr:
-        lxi h, RX_ERROR | RX_DONE
-        shld rxdrv_csr
-        ret
+        lxi h, rxdrv_csr + 1
+        mvi a, RX_ERROR>>8
+        ora m
+        mov m, a
+        jmp _rxdrv_set_done
 
 _rxdrv_cmd_empty:
         lxi h, rxdrv_bufofs

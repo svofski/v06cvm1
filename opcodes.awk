@@ -27,6 +27,21 @@ BEGIN {
     printf("uint16_t rxdrv_csr_addr = 0x%s;\n", $2);
 }
 
+/ rxdrv_sector:/ {
+    printf("uint16_t rxdrv_sector_addr = 0x%s;\n", $2);
+}
+
+/ rxdrv_track:/ {
+    printf("uint16_t rxdrv_track_addr = 0x%s;\n", $2);
+}
+
+/ rx_control_reg:/ {
+    printf("uint16_t rx_control_reg_addr = 0x%s;\n", $2);
+}
+
+/ tx_control_reg:/ {
+    printf("uint16_t tx_control_reg_addr = 0x%s;\n", $2);
+}
 
 / test_opcode_table:/ {
     opcode_index = 0;
