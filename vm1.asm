@@ -2973,9 +2973,43 @@ _inc_n:
         ret
         
 opc_dec:   
-        call load_de_dd16
+        ;call load_de_dd16
+
+        ; ------- inline load_de_dd16 + vm1_addrmode local
+        ; select addr mode
+        mvi a, 070q
+        ana e
+        sta _dec_addrmode ; local!
+        ral \ ral ; addr mode * 32
+        mov l, a  ; l = lsb load16[addr mode]
+        mvi a, 007q
+        ana e
+        ral
+        mov e, a  ; e = lsb reg16
+
+        lxi b, _dec_load_dd16_return
+        push b
+        mvi h, load16 >> 8
+        mvi d, regfile >> 8
+        pchl
+
+_dec_load_dd16_return:
+        ; ------------------------------------------------
+
         dcx d
-        call _store_de_hl_addrmode
+
+        ;call _store_de_hl_addrmode
+; ----macro _store_de_hl_addrmode:
+_dec_addrmode .equ $+1
+        mvi a, 0
+        ora a
+        jz _dec_sdeha_reg
+        STORE_DE_TO_HL
+        jmp _dec_xx2
+_dec_sdeha_reg:
+        STORE_DE_TO_HL_REG
+_dec_xx2:
+;; ----------------------------
 
         ; aluf NZV
         lxi h, rpsw
@@ -4435,7 +4469,12 @@ movb_setaluf_and_store:
         ana m
         mov m, a
         lhld vm1_opcode_x
-        jmp _movb_store_dd8
+
+        mvi a, 070q    ; check dd addrmode
+        ana l
+        jnz store_dd8  ; -> regular 
+        jmp store_dd16 ; -> sex
+
 _movb_setaluf_n:
         ; set N, - sex
         lxi h, rpsw
@@ -4445,7 +4484,12 @@ _movb_setaluf_n:
         ori PSW_N
         mov m, a
         lhld vm1_opcode_x
-        jmp _movb_store_dd8
+
+        mvi a, 070q    ; check dd addrmode
+        ana l
+        jnz store_dd8  ; -> regular 
+        jmp store_dd16 ; -> sex
+
 _movb_setaluf_z:
         ; set Z, + sex
         lxi h, rpsw
@@ -4455,15 +4499,11 @@ _movb_setaluf_z:
         ori PSW_Z
         mov m, a
         lhld vm1_opcode_x
-        jmp _movb_store_dd8
 
-_movb_store_dd8:
-        ; check dd addrmode, 0 -> stbmode_with_sex
-        lda vm1_opcode_x
-        ani 070q 
-        jnz store_dd8
-        ; == stbmode0_with_sex 
-        jmp store_dd16
+        mvi a, 070q    ; check dd addrmode
+        ana l
+        jnz store_dd8  ; -> regular 
+        jmp store_dd16 ; -> sex
 
 
 #ifdef TEST_ADDRMODES
