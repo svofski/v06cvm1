@@ -182,6 +182,10 @@ rst0_old_handler .equ $+1
         jmp 0
         
 int_handler:
+        shld _inth_hlsave   ; save hl
+        pop h
+        shld _inth_return   ; save return addr
+
 old_handler .equ $+1
         call 0
 
@@ -196,7 +200,19 @@ _cpoll_enable:  ; disable: #oraa = $b7, enable: #stc = $37
         pop d
         pop b
         pop psw
-        ret
+
+        ; update [HOST_SP - 2] = vm1_exec_return
+        lxi h, vm1_exec_return
+        shld HOST_SP-2
+        ; restore hl
+_inth_hlsave: .equ $+1
+        lxi h, 0
+        ; return from interrupt
+_inth_return: .equ $+1
+        jmp 0
+
+_inth_hlsave: .dw 0
+        ;ret
 around_int_handler:
 #endif
 
@@ -306,16 +322,15 @@ tm1_memcpy:
         call vm1_reset
         lxi h, test_mov1_pgm
         shld r7
-#ifndef TESTBENCH
-tm1_loop_end:
-#endif
-
 vm1_enter_loop:
         DISINT
         lxi h, vm1_exec_return
-        shld HOST_SP-4
-        lxi sp, HOST_SP
+        shld HOST_SP-2
+        lxi sp, HOST_SP-2
 
+#ifndef TESTBENCH
+tm1_loop_end:
+#endif
 tm1_loop:
 vm1_exec:
         ; inline ultrafast insn fetch, sp is fixed, vm1_opcode is at the top of the stack
@@ -328,41 +343,33 @@ wild_miss:
         shld r7
         mvi a, kvazbank
         out kvazport
-        pop h ; de <- opcode
+        pop h ; hl <- opcode
         xra a
         out kvazport
 wild_fetched:
-        lxi sp, HOST_SP
+        lxi sp, HOST_SP-2
         ENAINT
 
-        push h  ; vm1_opcode <- hl /  [HOST_SP - 2] <- hl
-
-        ; set return address for instructions because we pchl into them
-        lxi b, vm1_exec_return
-        push b
-
+        shld vm1_opcode
         xchg            ; de <- opcode
         mvi a, $f0
         ana d
         mov l, a
         mvi h, vm1_opcode1_tbl >> 8
-        pchl
-
-
+        pchl            ; ret -> [HOST_SP - 2] == vm1_exec_return
+        
+        ; instruction handler return point
+        ; if interrupt enters here, it will overwrite vm1_exec_return at [HOST_SP - 2]
+        ; so we must force restore it in the interrupt handler: see int_handler
 vm1_exec_return:
         ; process interruptsies
-        ;lda ;intflg_io
-        ;ani IORQ_XCSR|IORQ_RCSR
-        ;lda tx_control_reg
-        ;ani XCSR_INTE
-        ;cnz console_poll
-
-;        lda intflg
-;        ora a
         xra a
 intflg  .equ $+1
         ori 0              ; inline intflg
-        jz tm1_loop_end
+        jz tm1_loop_end    ; no int -> next insn
+
+        lxi sp, HOST_SP-2 ; reset SP before we make any calls
+
         lxi h, intflg
         mvi a, RQ_EMT
         ana m
@@ -1589,9 +1596,15 @@ vm1_reset_l1:
 ; HOST_SP - 2   vm1_opcode 
 ; HOST_SP       -- TOS    
 
+; new layout -- vm1_opcode is in normal space
+;
+; HOST_SP - 4   <instruction handler stack>
+; HOST_SP - 2   vm1_exec_return                 ; sp load value
+; HOST_SP       -- TOS    
 
-;vm1_opcode:     .dw 0
-vm1_opcode .equ HOST_SP-2
+
+vm1_opcode:     .dw 0
+;vm1_opcode .equ HOST_SP-2
 vm1_addrmode:   .db 0
 
         .org ( $ + 0FFH) & 0FF00H ; align 256
