@@ -197,7 +197,7 @@ _rxdrv_set_int:
         mvi a, RQ_IORQ
         ora m
         mov m, a
-        inx h
+        lxi h, intflg_io
         mvi a, IORQ_RX
         ora m
         mov m, a

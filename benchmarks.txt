@@ -16,3 +16,8 @@ tailstr:115519562 tail call store to addrmode
 	113762758 rol with inline load_dd16 and local addrmode
 	113721854 ror with inline load_dd16 and local addrmode
 	113350613 no save addrmode where applicable 5:36.5  ~ 74.7x
+
+things happened
+
+rt11 baseline (test.bas)
+        113762595 - current basic bench

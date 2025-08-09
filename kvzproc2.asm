@@ -345,7 +345,7 @@ _rcsr_set_int:                        ; set rcsr interrupt
                 mvi a, RQ_IORQ
                 ora m
                 mov m, a
-                inx h
+                lxi h, intflg_io
                 mvi a, IORQ_RCSR
                 ora m
                 mov m, a
@@ -471,7 +471,7 @@ _xcsr_set_int:
                 mvi a, RQ_IORQ
                 ora m
                 mov m, a
-                inx h
+                lxi h, intflg_io
                 mvi a, IORQ_XCSR
                 ora m
                 mov m, a

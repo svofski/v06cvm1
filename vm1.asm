@@ -311,12 +311,13 @@ tm1_loop_end:
 #endif
 
 vm1_enter_loop:
+        DISINT
+        lxi h, vm1_exec_return
+        shld HOST_SP-4
         lxi sp, HOST_SP
 
 tm1_loop:
 vm1_exec:
-        ;call kvazinsnfetch ;; hl <- opcode
-
         ; inline ultrafast insn fetch, sp is fixed, vm1_opcode is at the top of the stack
 wildfetch:
         DISINT
@@ -334,8 +335,7 @@ wild_fetched:
         lxi sp, HOST_SP
         ENAINT
 
-        ;shld vm1_opcode
-        push h  ; vm1_opcode = hl (0x00fe)
+        push h  ; vm1_opcode <- hl /  [HOST_SP - 2] <- hl
 
         ; set return address for instructions because we pchl into them
         lxi b, vm1_exec_return
@@ -357,8 +357,11 @@ vm1_exec_return:
         ;ani XCSR_INTE
         ;cnz console_poll
 
-        lda intflg
-        ora a
+;        lda intflg
+;        ora a
+        xra a
+intflg  .equ $+1
+        ori 0              ; inline intflg
         jz tm1_loop_end
         lxi h, intflg
         mvi a, RQ_EMT
@@ -431,7 +434,7 @@ vm1int_bpt_not:
         jnz tm1_loop_end  ; ignore IO while P bit set
 
           ; IO rq
-          inx h ; &intflg_io
+          lxi h, intflg_io
           mvi a, IORQ_RX
           ana m
           jnz vm1int_iorq_rx
@@ -443,7 +446,7 @@ vm1int_bpt_not:
           jnz vm1int_iorq_rcsr
         
         ; if RQ_IORQ was raised but none of IORQ_* are set, drop RQ_IORQ flag and continue
-        dcx h ; &intflg
+        lxi h, intflg
         mvi a, ~RQ_IORQ
         ana m
         mov m, a
@@ -461,7 +464,7 @@ vm1int_iorq_update:
           xra a
           ora m
           rnz               ; some interrupts unserved, continue
-          dcx h ; &intflg
+          lxi h, intflg
           mvi a, ~RQ_IORQ   ; reset IORQ if no pending IO interrupts
           ana m
           mov m, a
@@ -1578,7 +1581,13 @@ vm1_reset_l1:
         ret
 
         
-
+; fixed stack layout
+;
+;     . . .
+; HOST_SP - 6   <instruction handler stack>
+; HOST_SP - 4   vm1_exec_return
+; HOST_SP - 2   vm1_opcode 
+; HOST_SP       -- TOS    
 
 
 ;vm1_opcode:     .dw 0
@@ -2068,7 +2077,7 @@ r6:     .dw 0
 r7:     .dw 0
 rpsw:   .dw 0
 
-intflg:     .db 0
+;intflg:     .db 0
 intflg_io:  .db 0
 
 regfile_end .equ $
