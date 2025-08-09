@@ -328,15 +328,13 @@ vm1_enter_loop:
         shld HOST_SP-2
         lxi sp, HOST_SP-2
 
-#ifndef TESTBENCH
 tm1_loop_end:
-#endif
 tm1_loop:
 vm1_exec:
         ; inline ultrafast insn fetch, sp is fixed, vm1_opcode is at the top of the stack
 wildfetch:
         DISINT
-        lhld r7
+        lhld r7         ; don't make it lxi h, ... ! regfile is monolithic
 wild_miss:
         sphl  ; guest addr = pc
         inx h \ inx h ; hl <- pc + 2
@@ -505,14 +503,6 @@ tm1_loop_enter_interrupt:
         lxi d, tm1_loop_end
         push d
         jmp opx_interrupt
-#ifdef TESTBENCH        
-tm1_loop_end:
-        lhld vm1_opcode
-        mov a, h
-        ora l
-        jnz tm1_loop
-        hlt
-#endif
 
         ;ALIGN_16
         ; why is this here? .org 1000q

@@ -22,3 +22,7 @@ things happened
 rt11 baseline (test.bas)
         113762595 - current basic bench
 	111675095 - lxi sp
+	112480655 - pchl -> jmp, but!
+
+new baseline (changed looping in testbench)
+        106975995
