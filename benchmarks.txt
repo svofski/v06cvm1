@@ -26,3 +26,4 @@ rt11 baseline (test.bas)
 
 new baseline (changed looping in testbench)
         106975995
+	105397127 - removed global vm1_opcode

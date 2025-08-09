@@ -211,8 +211,6 @@ _inth_hlsave: .equ $+1
 _inth_return: .equ $+1
         jmp 0
 
-_inth_hlsave: .dw 0
-        ;ret
 around_int_handler:
 #endif
 
@@ -348,7 +346,7 @@ wild_fetched:
         lxi sp, HOST_SP-2
         ENAINT
 
-        shld vm1_opcode
+        ;shld vm1_opcode
         xchg            ; de <- opcode
         mvi a, $f0
         ana d
@@ -1265,7 +1263,8 @@ test_opcode_table:
 
 ; test rst1
 rst1_handler:
-        lhld vm1_opcode
+        ;lhld vm1_opcode
+        xchg
         call hl_to_hexstr
 
         lxi d, hexstr
@@ -1593,7 +1592,7 @@ vm1_reset_l1:
 ; HOST_SP       -- TOS    
 
 
-vm1_opcode:     .dw 0
+vm1_opcode_x:     .dw 0
 ;vm1_opcode .equ HOST_SP-2
 vm1_addrmode:   .db 0
 
@@ -2416,15 +2415,15 @@ stwmode7:
 store8:
 stbmode0: ; reg16[dst].lsb = C
         ; for movb, store sign-extended value in reg
-        lda vm1_opcode+1
-        ani $f0
-        cpi $90   ; opcode = MOVB 11ssdd
-        jz stbmode0_with_sex
+        ;;;;lda vm1_opcode+1
+        ;;;;ani $f0
+        ;;;;cpi $90   ; opcode = MOVB 11ssdd
+        ;;;;jz stbmode0_with_sex
         STORE_C_TO_HL_REG
         ret
-stbmode0_with_sex:
-        STORE_BC_TO_HL_REG   ; store sign extended byte to reg
-        ret
+;stbmode0_with_sex:
+;        STORE_BC_TO_HL_REG   ; store sign extended byte to reg
+;        ret
         
         .org store8 + (32*1)
 stbmode1: ; *reg16[dst] = BC
@@ -2827,11 +2826,13 @@ opc_jsr:
         ;   R = R7
         ;   R7 = temp
         
-        xchg
-          call load_dd16
-                 ; h = new address
-          xchg  ; de = EA
-        lhld vm1_opcode
+        push d
+          xchg
+            call load_dd16
+                   ; h = new address
+            xchg  ; de = EA
+        pop h
+        ;lhld vm1_opcode
         push d ; save EA
           dad h
           dad h
@@ -3289,7 +3290,6 @@ _rol_load_dd16_return:
         mov l, a
 
         xchg
-        ;call _store_de_hl_addrmode_bc  ;; 24 + 12 + 12 vs lhld vm1_opcode \ jmp _store_de_hl_addrmode  20 + 12
 
 ;;; -------------- macro store_de_hl_addrmode_bc
 
@@ -3581,12 +3581,12 @@ opc_sxt:
 opc_bit:
         ; 03ssdd bit ss, dd: src & dst, N=msb, Z=z, V=0, C not touched
         xchg
-        ;push h
+        push h
           call load_ss16_noam
           mov b, d        ; bc <- src
           mov c, e
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
 
         ;push b
           call load_dd16_noam    ; de <- dst
@@ -3623,10 +3623,12 @@ bit_n:  mvi a, PSW_N
 opc_bic:
         ; 04ssdd bic ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C not touched
         xchg
-        call load_ss16_noam
-        mov b, d
-        mov c, e        ; bc <- src
-        lhld vm1_opcode
+        push h
+          call load_ss16_noam
+          mov b, d
+          mov c, e        ; bc <- src
+        pop h
+        ;lhld vm1_opcode
         ;push b
           call load_dd16    ; de <- dst, hl = dst+1
         ;pop b
@@ -3646,12 +3648,12 @@ opc_bic:
 opc_bis:
         ; 05ssdd bis ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
         xchg
-        ;push h
+        push h
           call load_ss16_noam
           mov b, d
           mov c, e
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         ;push b
           call load_dd16
         ;pop b
@@ -3668,11 +3670,11 @@ opc_bis:
 opc_bitb:
         ; 13ssdd bitb ss, dd: src & dst, N=msb, Z=z, V=0, C no touchy
         xchg
-        ;push h
+        push h
           call load_ss8_noam
           mov c, e        ; <- src
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         push b
           call load_dd8_noam
         pop b
@@ -3701,11 +3703,11 @@ bitb_n: mvi a, PSW_N
 opc_bicb:
         ; 14ssdd bicb ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C no touchy
         xchg
-        ;push h
+        push h
           call load_ss8_noam
           mov c, e
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         push b
           call load_dd8
         pop b
@@ -3719,11 +3721,11 @@ opc_bicb:
 opc_bisb:
         ; 15ssdd bisb ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
         xchg
-        ;push h
+        push h
           call load_ss8_noam
           mov c, e
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         push b
           call load_dd8
         pop b
@@ -3735,10 +3737,12 @@ opc_bisb:
 
 opc_add:
         xchg
-        call load_ss16_noam
-        mov b, d
-        mov c, e
-        lhld vm1_opcode
+        push h
+          call load_ss16_noam
+          mov b, d
+          mov c, e
+        pop h
+        ;lhld vm1_opcode
         ;push b
           call load_dd16
         ;pop b
@@ -3791,10 +3795,12 @@ _add_flags_done:
 
 opc_sub:
         xchg
+        push h
           call load_ss16_noam
           mov b, d
           mov c, e
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         ;push b
           call load_dd16
         ;pop b
@@ -3832,12 +3838,12 @@ opc_sub:
 opc_cmp: 
         ; 02ssdd CMP ss, dd   src - dst -> flags
         xchg
-        ;push h
+        push h
           call load_ss16_noam
           mov b, d
           mov c, e        ; bc <- src
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
 
         ;push b
           call load_dd16_noam  ; de <- dst
@@ -3898,11 +3904,11 @@ cmp_n:
 opc_cmpb:
         ; 12ssdd CMP ss, dd  src - dst -> flags
         xchg
-        ;push h
+        push h
           call load_ss8_noam
           mov c, e      ; c <- src
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         push b
           call load_dd8_noam   ; e <- dst
         pop b
@@ -4276,6 +4282,8 @@ _sbcb_tv:
 opc_mfps:
         ; 1067dd: psw -> dst
         ;push d #LHLD_OPCODE
+        xchg
+        shld vm1_opcode_x
           lhld rpsw
           mov c, l
           jmp movb_setaluf_and_store
@@ -4329,6 +4337,7 @@ opc_real_mov:
 ;killswitch:   nop ; want hl = fe78
 
         xchg  ; opcode was in de -> hl
+        shld vm1_opcode_x ; needed for store_dd16, but actually only lsb
        
         ;call load_ss16
         ;; -- inline load_ss16
@@ -4365,7 +4374,7 @@ mov_setaluf_and_store:
         mvi a, ~(PSW_Z | PSW_N | PSW_V)
         ana m
         mov m, a
-        lhld vm1_opcode
+        lhld vm1_opcode_x
         jmp store_dd16
 
 _mov_setaluf_n:
@@ -4375,7 +4384,7 @@ _mov_setaluf_n:
         ana m
         ori PSW_N
         mov m, a
-        lhld vm1_opcode
+        lhld vm1_opcode_x
         jmp store_dd16
 
 _mov_setaluf_z:
@@ -4385,11 +4394,12 @@ _mov_setaluf_z:
         ana m
         ori PSW_Z
         mov m, a
-        lhld vm1_opcode
+        lhld vm1_opcode_x
         jmp store_dd16
 
 real_opc_movb:
         xchg  ; opcode was in de -> hl
+        shld vm1_opcode_x ; for store_dd8
         ;call load_ss8
         ; ----- inline load_ss8
         dad h
@@ -4424,8 +4434,8 @@ movb_setaluf_and_store:
         mvi a, ~(PSW_Z | PSW_N | PSW_V)
         ana m
         mov m, a
-        lhld vm1_opcode
-        jmp store_dd8
+        lhld vm1_opcode_x
+        jmp _movb_store_dd8
 _movb_setaluf_n:
         ; set N, - sex
         lxi h, rpsw
@@ -4434,8 +4444,8 @@ _movb_setaluf_n:
         ana m
         ori PSW_N
         mov m, a
-        lhld vm1_opcode
-        jmp store_dd8
+        lhld vm1_opcode_x
+        jmp _movb_store_dd8
 _movb_setaluf_z:
         ; set Z, + sex
         lxi h, rpsw
@@ -4444,8 +4454,16 @@ _movb_setaluf_z:
         ana m
         ori PSW_Z
         mov m, a
-        lhld vm1_opcode
-        jmp store_dd8
+        lhld vm1_opcode_x
+        jmp _movb_store_dd8
+
+_movb_store_dd8:
+        ; check dd addrmode, 0 -> stbmode_with_sex
+        lda vm1_opcode_x
+        ani 070q 
+        jnz store_dd8
+        ; == stbmode0_with_sex 
+        jmp store_dd16
 
 
 #ifdef TEST_ADDRMODES
