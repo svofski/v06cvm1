@@ -40,7 +40,7 @@ kvazreadDE:
 		  lxi h,0
 		  dad sp			;HL=old SP
 		  mvi a,kvazbank
-		  di
+		  DISINT
 		  out kvazport
 		  xchg			;HL=address, DE=old SP
 		  sphl			;SP=address
@@ -49,7 +49,7 @@ kvazreadDE:
 		  xra a
 		  out kvazport
 		  sphl			;SP=old SP
-		  ei
+		  ENAINT
                 pop h
 		ret
 
@@ -73,7 +73,7 @@ kvazreadBC:
                     lxi h,0
                     dad sp                  ;HL=old SP
                     mvi a,kvazbank
-                    di
+                    DISINT
                     out kvazport
                     xchg                    ;HL=address, DE=old SP
                     sphl                    ;SP=address
@@ -83,7 +83,7 @@ kvazreadBC:
                     xra a
                     out kvazport
                     sphl                    ;SP=old SP
-                    ei
+                    ENAINT
                   pop h
                 ;pop d
                 ret
@@ -111,7 +111,7 @@ kvazinsnfetch:
 prefetch_miss:
           xchg
           lxi h,0
-          di
+          DISINT
           dad sp
           mvi a,kvazbank
           out kvazport
@@ -123,7 +123,7 @@ prefetch_miss:
           xra a
           out kvazport
           sphl
-          ei
+          ENAINT
         mov h, b
         mov l, c
         shld prefetched_word      ; 8 + 8 + 20; lxi \ mov \ inx \ mov  = 12 + 8 + 8 + 8
@@ -177,7 +177,7 @@ kvazwriteBC:
 		    lxi h,0
 		    dad sp			;HL=old SP
 		    mvi a,kvazbank
-		    di
+		    DISINT
 		    out kvazport
 		    xchg			;HL=address, DE=old SP
 		    sphl			;SP=address
@@ -188,7 +188,7 @@ kvazwriteBC:
 		    xra a
 		    out kvazport
 		    sphl			;SP=old SP
-		    ei
+		    ENAINT
                   pop d
                 pop h
 		ret
@@ -205,7 +205,7 @@ kvazwriteC:
 		    lxi h,0
 		    dad sp			;HL=old SP
 		    mvi a,kvazbank
-		    di
+		    DISINT
 		    out kvazport
 		    xchg			;HL=address, DE=old SP
 		    sphl			;SP=address
@@ -217,7 +217,7 @@ kvazwriteC:
 		    xra a
 		    out kvazport
 		    sphl			;SP=old SP
-		    ei
+		    ENAINT
                   pop h
                 pop d
 		ret
@@ -322,7 +322,7 @@ write_rx_control:
 
 _rcsr_check:
                 mvi c, $b ; C_STAT console status
-                call 5
+                CALL_BDOS
                 lxi d, 0
                 ora a
                 jnz _rcsr_has         ; something in the buffer
@@ -372,7 +372,7 @@ read_rx_control:
 
                 ;push h
                 ;mvi c, $b ; C_STAT console status
-                ;call 5
+                ;CALL_BDOS
                 ;lxi d, 0
                 ;ora a
                 ;pop h
@@ -382,12 +382,12 @@ read_rx_control:
                 ;
                 ;; read the char
                 ;; mvi c, 1 -- this is with echo, sux
-                ;; call 5
+                ;; CALL_BDOS
                 ;; sta rx_data_reg
                 ;push h
                 ;mvi c, 6 ; raw console i/o
                 ;mvi e, $ff
-                ;call 5
+                ;CALL_BDOS
                 ;sta rx_data_reg
 
                 ;mvi e, $80
@@ -403,7 +403,7 @@ read_rx_data:
                 ;pop h
                 mvi c, 6 ; raw console i/o
                 mvi e, $ff
-                call 5
+                CALL_BDOS
                 mov e, a
                 mvi d, 0
                 ret
@@ -434,11 +434,17 @@ XCSR_VEC        .equ 000064q
 
 
 console_poll:   
+                ; set XCSR interrupt if XCSR_INTE is set because we always can print
                 lxi h, tx_control_reg
                 mvi a, XCSR_INTE
                 ana m
-                rz
-                jmp _xcsr_set_int
+                cnz _xcsr_set_int
+                ; poll console input
+                jmp _rcsr_check
+                ;ret
+                ;nop
+                ;nop
+
 
 write_tx_control:
                 ; 

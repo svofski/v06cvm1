@@ -3,9 +3,18 @@
 #define kvazbank 10h
 #define kvazport 10h
 
+#define DISINT   di
+#define ENAINT   ei
+#define CALL_BDOS call 5
+
+; for some extreme debugging
+;#define ENAINT
+;#define CALL_BDOS call 5 \ di
+
+
 HOST_SP .equ $6000      ; attention
 
-        di
+        DISINT
         xra a
         out $10
         
@@ -124,6 +133,71 @@ HOST_SP .equ $6000      ; attention
         ; install fake call5
         mvi a, $c9
         sta 5
+#else
+        ; poll console from the screen interrupt
+install_int_handler:
+        lhld $39     ; hope there's a jmp xxxx
+        shld old_handler
+        lxi h, int_handler
+        shld $39
+
+        ; install restore routine
+        lhld $1
+        shld rst0_old_handler
+        lxi h, rst0_handler
+        shld $1
+
+        ; bdos handler seems to be nonreentrant and we poll the console from
+        ; the interrupt. make sure that the interrupt doesn't happen while
+        ; in the bdos.
+        lhld $6
+        shld old_bdos_handler
+        lxi h, bdos_handler
+        shld $6
+
+        jmp around_int_handler
+
+
+bdos_handler:
+        push psw
+          mvi a, $b7  ; ora a to disable cc console_poll
+          sta _cpoll_enable
+        pop psw
+old_bdos_handler .equ $+1
+        call 0
+        push psw
+          mvi a, $37 ; stc to enable cc console_poll
+          sta _cpoll_enable
+        pop psw
+        ret
+
+        
+        ; clean up and return to dos
+rst0_handler:
+        lhld old_handler
+        shld $39
+        xra a
+        out $10
+rst0_old_handler .equ $+1
+        jmp 0
+        
+int_handler:
+old_handler .equ $+1
+        call 0
+
+        push psw
+        push b
+        push d
+        push h
+_cpoll_enable:  ; disable: #oraa = $b7, enable: #stc = $37
+        stc
+        cc console_poll
+        pop h
+        pop d
+        pop b
+        pop psw
+        ret
+around_int_handler:
 #endif
 
 #ifdef TEST_SERIOUSLY
@@ -245,7 +319,7 @@ vm1_exec:
 
         ; inline ultrafast insn fetch, sp is fixed, vm1_opcode is at the top of the stack
 wildfetch:
-        di
+        DISINT
         lhld r7
 wild_miss:
         sphl  ; guest addr = pc
@@ -258,7 +332,7 @@ wild_miss:
         out kvazport
 wild_fetched:
         lxi sp, HOST_SP
-        ei
+        ENAINT
 
         ;shld vm1_opcode
         push h  ; vm1_opcode = hl (0x00fe)
@@ -277,9 +351,11 @@ wild_fetched:
 
 vm1_exec_return:
         ; process interruptsies
-        lda intflg_io
-        ani IORQ_XCSR|IORQ_RCSR
-        cnz console_poll
+        ;lda ;intflg_io
+        ;ani IORQ_XCSR|IORQ_RCSR
+        ;lda tx_control_reg
+        ;ani XCSR_INTE
+        ;cnz console_poll
 
         lda intflg
         ora a
@@ -363,6 +439,7 @@ vm1int_bpt_not:
           ana m
           jnz vm1int_iorq_xcsr
           mvi a, IORQ_RCSR
+          ana m
           jnz vm1int_iorq_rcsr
         
         ; if RQ_IORQ was raised but none of IORQ_* are set, drop RQ_IORQ flag and continue
@@ -1193,7 +1270,7 @@ rst1_handler:
 
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
   
         call putsi \ .db " opcode not implemented", 10, 13, '$'
         pop h
@@ -1246,7 +1323,7 @@ putsi:
         pop d
         push d
         mvi c, 9
-        call 5
+        CALL_BDOS
         mvi a, '$'
         pop h
 putsi_l0:        
@@ -1272,7 +1349,7 @@ assert8_trap:
         call hl_to_hexstr
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         ;
         call putsi \ .db " e=$"
         pop h
@@ -1280,7 +1357,7 @@ assert8_trap:
         call hl_to_hexstr
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         
         call putsi \ .db " expected=$"
         pop psw
@@ -1289,7 +1366,7 @@ assert8_trap:
         call hl_to_hexstr
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         
         rst 0
 
@@ -1314,7 +1391,7 @@ assert_trap:
         call putsi \ .db "assert at $"
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         
         call putsi \ .db " act=$"
 
@@ -1322,7 +1399,7 @@ assert_trap:
         call hl_to_hexstr
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         
         ; expected
         lhld assert_adr
@@ -1334,7 +1411,7 @@ assert_trap:
         call putsi \ .db " exp=$"
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
 assert_trap_nl_exit:
         call putsi \ .db 10, 13, "$"
         
@@ -1364,11 +1441,11 @@ assert_mem_trap:
           lhld assert_adr
           dcx h \ dcx h \ dcx h \ call hl_to_hexstr
           call putsi \ .db "assert at $"
-          lxi d, hexstr \ mvi c, 9 \ call 5
+          lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
         pop h 
         call hl_to_hexstr
         call putsi \ .db " act=$"
-        lxi d, hexstr \ mvi c, 9 \ call 5
+        lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 
         jmp assert_reg_trap_exp
 
@@ -1392,7 +1469,7 @@ assert_reg_trap:
         push h
         dcx h \ dcx h \ dcx h \ call hl_to_hexstr
         call putsi \ .db "assert at $"
-        lxi d, hexstr \ mvi c, 9 \ call 5
+        lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 
         pop h
         mov e, m \ inx h \ mov d, m
@@ -1401,14 +1478,14 @@ assert_reg_trap:
         xchg
         call hl_to_hexstr
         call putsi \ .db " act=$"
-        lxi d, hexstr \ mvi c, 9 \ call 5
+        lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 assert_reg_trap_exp:
         lhld assert_adr
         inx h \ inx h
         mov e, m \ inx h \ mov d, m \ xchg
         call hl_to_hexstr
         call putsi \ .db " exp=$"
-        lxi d, hexstr \ mvi c, 9 \ call 5
+        lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 
         jmp assert_trap_nl_exit
 
@@ -1443,7 +1520,7 @@ hexstr:  .db 0, 0, 0, 0, "$"
         ; clear $1000..$2fff
 clearmem:
 #ifdef #WITH_KVAZ
-        di
+        DISINT
         lxi h, 0
         dad sp
         shld clearmem_sp
@@ -1464,7 +1541,7 @@ clearmem_loop:
 
 clearmem_sp .equ $+1
         lxi sp, 0
-        ei
+        ENAINT
 #endif
         lxi h, $1000
         lxi b, $3000

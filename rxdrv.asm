@@ -264,7 +264,7 @@ _rxdrv_read_sector:
          
         lxi d, fcb1
         mvi c, F_READRAND
-        call BDOS
+        CALL_BDOS
         ora a
         jnz _rxdrv_seterr
 
@@ -346,4 +346,5 @@ _rxdrv_1:
 
 
 
-imgname:    .db "RT11SJ01DSK", 0
+;imgname:    .db "RT11SJ01DSK", 0
+imgname:    .db "STALK   DSK", 0

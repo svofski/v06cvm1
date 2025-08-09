@@ -65,7 +65,7 @@ rom_load_addr  .equ 02000q
 load_file:
         lxi d, msg_gamarjoba
         mvi c, C_WRITESTR
-        call BDOS
+        CALL_BDOS
 
         lxi b, filename
         call open_fcb1
@@ -75,7 +75,7 @@ load_file:
         ; Loading...
         lxi d, msg_loading
         mvi c, C_WRITESTR
-        call BDOS
+        CALL_BDOS
 
         call ckvaz_init
 
@@ -83,7 +83,7 @@ load_file:
 fread_loop:        
         lxi d, fcb1
         mvi c, F_READ
-        call BDOS
+        CALL_BDOS
         ora a
         jz read_ok
         dcr a
@@ -106,7 +106,7 @@ read_ok:
 
         mvi c, C_WRITESTR
         lxi d, spinner_template
-        call BDOS
+        CALL_BDOS
 
         ; copy these bytes to kvaz
         call ckvaz
@@ -117,7 +117,7 @@ read_eof:
 
         lxi d, msg_read_done
         mvi c, C_WRITESTR
-        call BDOS
+        CALL_BDOS
         ; play demo
         ret
         
@@ -139,7 +139,7 @@ ckvaz_init:
 
         ; copy CP/M DMA area to kvaz, advance kvaz position
 ckvaz:
-        di
+        DISINT
         lxi h, 0
         dad sp
         shld ctk_sp
@@ -179,7 +179,7 @@ ckvaz_L1:
         out $10
 ctk_sp  .equ $ + 1
         lxi sp, 0
-        ei
+        ENAINT
         ret
 
 open_fcb1:
@@ -193,7 +193,7 @@ cn_L1:  ldax b
 fcb_ready:
         mvi c, F_OPEN
         lxi d, fcb1
-        call BDOS
+        CALL_BDOS
         inr a
         ret
 
