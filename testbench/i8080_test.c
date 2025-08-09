@@ -624,6 +624,12 @@ void bdos(int * success)
             bdos_fclose();
             break;
         case 33: // F_READRAND
+            //i8080_setreg_h(rand());
+            //i8080_setreg_l(rand());
+            //i8080_setreg_d(rand());
+            //i8080_setreg_e(rand());
+            //i8080_setreg_b(rand());
+            //i8080_setreg_c(rand());
             bdos_readrand();
             break;
     }

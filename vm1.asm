@@ -3,12 +3,11 @@
 #define kvazbank 10h
 #define kvazport 10h
 
-HOST_SP .equ $8000      ; could be even higher  - check microdos
+HOST_SP .equ $6000      ; attention
 
-        ; test load op16
-        ;di
-        ;xra a
-        ;out $10
+        di
+        xra a
+        out $10
         
         ;jmp test_storew_2_nomsg
 
