@@ -7,10 +7,10 @@ dma     .equ $80
 C_WRITE         .equ 2
 C_WRITESTR      .equ 9        
 F_OPEN          .equ 15          ; open file
+F_CLOSE         .equ 16
 F_READ          .equ 20          ; read next record
+F_READRAND      .equ 33          ; read random record
 
-msg_gamarjoba:
-        .db $1b, $5c, "Trap to 4 for Vector-06c + kvaz - svofski 2025", 0dh, 0ah, "$", 26
 msg_filenotfound:
         .db "Could not open 791401", 0dh, 0ah, "$"
 msg_wtf:
@@ -24,13 +24,12 @@ spinner_i:
 spinner_template:
         .db " ", 27, "D$"
 
-msg_loading:
-        .db "Loading "
 #ifdef BASIC
 filename:
         .db "013-BASIBIN", 0
 rom_start_addr .equ 140000q
 rom_load_addr  .equ 140000q
+#define _FILENAME_DEFINED
 #endif
 
 #ifdef TEST_791401
@@ -38,6 +37,7 @@ filename:
         .db "791401     ", 0
 rom_start_addr .equ 000200q
 rom_load_addr  .equ 000000q
+#define _FILENAME_DEFINED
 #endif
 
 #ifdef TEST_GKAAA0
@@ -45,35 +45,23 @@ filename:
         .db "GKAAA0     ", 0
 rom_start_addr .equ 000200q
 rom_load_addr  .equ 000000q
+#define _FILENAME_DEFINED
 #endif
+
+#ifndef _FILENAME_DEFINED
+filename:
+        .db "           ", 0
+rom_start_addr .equ 02002q
+rom_load_addr  .equ 02000q
+#endif  
 
         .db " $"
 
 load_file:
-        lxi d, msg_gamarjoba
-        mvi c, C_WRITESTR
-        call BDOS
-        
-copy_name:
         lxi b, filename
-        lxi d, fcb1 + 1         ; fcb1 name
-cn_L1:  ldax b
-        ora a
-        jz fcb_ready 
-        stax d
-        inx b \ inx d
-        jmp cn_L1
-fcb_ready:
-        mvi c, F_OPEN
-        lxi d, fcb1
-        call BDOS
-        inr a
+        call open_fcb1
+        
         jz notfound_error
-
-        ; Loading...
-        lxi d, msg_loading
-        mvi c, C_WRITESTR
-        call BDOS
 
         call ckvaz_init
 
@@ -81,7 +69,7 @@ fcb_ready:
 fread_loop:        
         lxi d, fcb1
         mvi c, F_READ
-        call BDOS
+        CALL_BDOS
         ora a
         jz read_ok
         dcr a
@@ -104,16 +92,18 @@ read_ok:
 
         mvi c, C_WRITESTR
         lxi d, spinner_template
-        call BDOS
+        CALL_BDOS
 
         ; copy these bytes to kvaz
         call ckvaz
         jmp fread_loop
 
 read_eof:
+        call close_fcb1
+
         lxi d, msg_read_done
         mvi c, C_WRITESTR
-        call BDOS
+        CALL_BDOS
         ; play demo
         ret
         
@@ -135,7 +125,7 @@ ckvaz_init:
 
         ; copy CP/M DMA area to kvaz, advance kvaz position
 ckvaz:
-        di
+        DISINT
         lxi h, 0
         dad sp
         shld ctk_sp
@@ -175,6 +165,25 @@ ckvaz_L1:
         out $10
 ctk_sp  .equ $ + 1
         lxi sp, 0
-        ei
+        ENAINT
         ret
 
+open_fcb1:
+        lxi d, fcb1 + 1         ; fcb1 name
+cn_L1:  ldax b
+        ora a
+        jz fcb_ready 
+        stax d
+        inx b \ inx d
+        jmp cn_L1
+fcb_ready:
+        mvi c, F_OPEN
+        lxi d, fcb1
+        CALL_BDOS
+        inr a
+        ret
+
+close_fcb1:
+        lxi d, fcb1
+        mvi c, F_CLOSE
+        jmp BDOS

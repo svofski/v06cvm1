@@ -1,16 +1,124 @@
-        .org $100
+;
+;   PDP-11/06C 
+;
+;   LSI-11/1801VM1 emulation for Vector-06C with Kvaz
+;
+;
+;   svofski 2025
+;
 
+;
+; Global config options
+;
+
+; rx01 image (256256 bytes) in cp/m fcb format 8+3
+#define RXIMAGE   "ADVENT  DSK"
+
+; BASIC ROM begins at 0140000, 0xc000
+#ifdef BASIC
+#define ROM_START $c000
+#endif
+
+; standard for vm1 is to ignore the lower bit in word ops
+; undefine to remove this, should not matter for well-behaved software
+;#define ODD_ADDR_CHECK
+
+; enables printing I/O debug info from emulator
+;#define HYPERDEBUG
+
+; enables printing undefined opcode info from emulator
+;#define DEBUG_OPCODES
+
+#define IO_MSB $f4    ; I/O area 172000 and up
+
+; pdp-11 ram is located in page 1 of kvaz 1
 #define kvazbank 10h
 #define kvazport 10h
 
-        ; test load op16
-        ;di
-        ;xra a
-        ;out $10
+;
+; Options invoked in makefiles:
+;
+; Configuration with RX01
+; #define TEST_RXDEV
+;
+; One of the tests
+; #define TEST_SERIOUSLY
+;
+; ROM BASIC configuration
+; #define BASIC
+
+
+        .org $100
+
+
+#define DISINT   di
+#define ENAINT   ei
+#define CALL_BDOS call 5
+
+; for some extreme debugging
+;#define ENAINT
+;#define CALL_BDOS call 5 \ di
+
+
+HOST_SP .equ $6000      ; attention
+
+        DISINT
+        xra a
+        out $10
         
         ;jmp test_storew_2_nomsg
 
-        ;call putsi \ .db "pdp11 on 8080 svofski 2025", 10, 13, "$"
+        call putsi \ .db "PDP-11/06C BY SVOFSKI 2025$"
+        
+        #ifdef BASIC
+        call putsi \ .db "/013-BASIC$"
+        #endif
+
+        #ifdef TEST_RXDEV
+        call putsi \ .db "/RX01[", RXIMAGE, "]$"
+        #endif
+
+        #ifdef TEST_SERIOUSLY
+        call putsi \ .db "/SERIOUSLY$"
+        #endif
+
+        #ifdef ROM_START
+        call putsi \ .db "/ROM @$"
+        lxi h, ROM_START
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+        #endif
+
+        call putsi \ .db "/IO @$"
+        lxi h, IO_MSB << 8
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+
+        #ifdef ODD_ADDR_CHECK
+        call putsi \ .db "/ODD=EVEN$"
+        #else
+        call putsi \ .db "/NO ODD CHECK$"
+        #endif
+
+        #ifdef HYPERDEBUG
+        call putsi \ .db "/HYPERDEBUG$"
+        #endif
+
+        #ifdef DEBUG_OPCODES
+        call putsi \ .db "/DEBUG OPCODES$"
+        #else
+        call putsi \ .db "/UNDEF OPCODES NOT REPORTED$"
+        #endif
+
+        #ifdef TESTBENCH
+        call putsi \ .db "/TESTBENCH$"
+        #endif
+
+        call putsi \ .db 13, 10, "$"
 
 ; load DE from REGISTER mem, addr in HL
 #define LOAD_DE_FROM_HL_REG           mov e, m \ inx h \ mov d, m
@@ -76,8 +184,10 @@
 #define PSW_Z           4      ; Zero result
 #define PSW_N           8      ; Negative result
 #define PSW_T           16     ; Trap/Debug
-#define PSW_P           0200   ; Priority
-#define PSW_HALT        0400   ; Halt
+#define PSW_P           0200q   ; Priority       LSI-11 IPL bits 7-5, 0340 = IPL 7, 0200 ~ IPL 4
+#define PSW_HALT        0400q   ; Halt
+
+
 
 #define RQ_EMT    1
 #define RQ_TRAP   2
@@ -86,7 +196,13 @@
 #define RQ_RPLY   16
 #define RQ_HALT   32
 #define RQ_RSVD   64  ; nonexistent instruction
-        
+#define RQ_IORQ   128 ; i/o request check intflg_io
+
+; bits for intflg_io
+#define IORQ_RX   1   ; RX  floppy - vector 240i
+#define IORQ_XCSR 2   ; XCSR 177564 / XBUF 177566 - vector 64   DLV11 Channel 3 receiver (bit #100, @#177564)
+#define IORQ_RCSR 4   ; RCSR 177560 / RBUF 177562 - vector 60   DLV11 Channel 3 transmitter 
+
 #ifdef NOOOOOO
         lxi d, $1234
         call assert_de_equals
@@ -116,14 +232,115 @@
         mvi a, $c9
         sta 5
 #else
-        call load_file
+        ; poll console from the screen interrupt
+install_int_handler:
+        lhld $39     ; hope there's a jmp xxxx
+        shld old_handler
+        lxi h, int_handler
+        shld $39
+
+        ; install restore routine
+        lhld $1
+        shld rst0_old_handler
+        lxi h, rst0_handler
+        shld $1
+
+        ; bdos handler seems to be nonreentrant and we poll the console from
+        ; the interrupt. make sure that the interrupt doesn't happen while
+        ; in the bdos.
+        lhld $6
+        shld old_bdos_handler
+        lxi h, bdos_handler
+        shld $6
+
+        jmp around_int_handler
+
+
+bdos_handler:
+        push psw
+          mvi a, $b7  ; ora a to disable cc console_poll
+          sta _cpoll_enable
+        pop psw
+old_bdos_handler .equ $+1
+        call 0
+        push psw
+          mvi a, $37 ; stc to enable cc console_poll
+          sta _cpoll_enable
+        pop psw
+        ret
+
+        
+        ; clean up and return to dos
+rst0_handler:
+        lhld old_handler
+        shld $39
+        xra a
+        out $10
+rst0_old_handler .equ $+1
+        jmp 0
+        
+int_handler:
+        shld _inth_hlsave   ; save hl
+        pop h
+        shld _inth_return   ; save return addr
+
+old_handler .equ $+1
+        call 0
+
+        push psw
+        push b
+        push d
+        push h
+_cpoll_enable:  ; disable: #oraa = $b7, enable: #stc = $37
+        stc
+        cc console_poll
+        pop h
+        pop d
+        pop b
+        pop psw
+
+        ; update [HOST_SP - 2] = vm1_exec_return
+        lxi h, vm1_exec_return
+        shld HOST_SP-2
+        ; restore hl
+_inth_hlsave: .equ $+1
+        lxi h, 0
+        ; return from interrupt
+_inth_return: .equ $+1
+        jmp 0
+
+around_int_handler:
 #endif
-        ;jmp test_mov_1
-        ;jmp test_opcodes
 
 #ifdef TEST_SERIOUSLY
+        #ifndef TESTBENCH
+        call load_file
+        #endif
         jmp test_from_000200
 #endif
+
+#ifdef TEST_RXDRV
+        call rxdrv_mount
+        call rxdrv_load_boot
+        jmp vm1_enter_loop
+#endif
+
+
+;        call putsi \ .db 10, 13, "RX11 TEST", 10, 13, "$"
+;        ; test rxdrv
+;        call rxdrv_mount
+;        lxi b, 7 ; #READ+GO
+;        call write_rxdrv_csr
+;        mvi c, 23    ; sector
+;        call write_rxdrv_data
+;        mvi c, 65    ; track
+;        call write_rxdrv_data
+;
+;        jmp $
+
+
+        ;jmp test_mov_1
+        ;jmp test_opcodes
 
 #ifdef TEST_ADDRMODES
         jmp test_addrmodes
@@ -168,7 +385,7 @@ test_from_000200:
         ;lxi h, 200q
         lxi h, rom_start_addr   ; 200q for 791401, 140000q for 013-basic
         shld r7
-        jmp tm1_loop_enter
+        jmp vm1_enter_loop
 #endif
 
 test_mov_1:
@@ -201,54 +418,51 @@ tm1_memcpy:
         call vm1_reset
         lxi h, test_mov1_pgm
         shld r7
-#ifndef TESTBENCH
+vm1_enter_loop:
+        DISINT
+        lxi h, vm1_exec_return
+        shld HOST_SP-2
+        lxi sp, HOST_SP-2
+
 tm1_loop_end:
-#endif
-
-tm1_loop_enter:
-        lxi sp, $100
-
 tm1_loop:
 vm1_exec:
-        ;call kvazinsnfetch ;; hl <- opcode
-
         ; inline ultrafast insn fetch, sp is fixed, vm1_opcode is at the top of the stack
 wildfetch:
-        di
-        lhld r7
+        DISINT
+        lhld r7         ; don't make it lxi h, ... ! regfile is monolithic
 wild_miss:
         sphl  ; guest addr = pc
         inx h \ inx h ; hl <- pc + 2
         shld r7
         mvi a, kvazbank
         out kvazport
-        pop h ; de <- opcode
+        pop h ; hl <- opcode
         xra a
         out kvazport
 wild_fetched:
-        lxi sp, $100
-        ei
+        lxi sp, HOST_SP-2
+        ENAINT
 
         ;shld vm1_opcode
-        push h  ; vm1_opcode = hl (0x00fe)
-
-        ; set return address for instructions because we pchl into them
-        lxi b, vm1_exec_return
-        push b
-
         xchg            ; de <- opcode
         mvi a, $f0
         ana d
         mov l, a
         mvi h, vm1_opcode1_tbl >> 8
-        pchl
-
-
+        pchl            ; ret -> [HOST_SP - 2] == vm1_exec_return
+        
+        ; instruction handler return point
+        ; if interrupt enters here, it will overwrite vm1_exec_return at [HOST_SP - 2]
+        ; so we must force restore it in the interrupt handler: see int_handler
 vm1_exec_return:
         ; process interruptsies
-        lda intflg
-        ora a
-        jz tm1_loop_end
+        xra a
+intflg  .equ $+1
+        ori 0              ; inline intflg
+        jz tm1_loop_end    ; no int -> next insn
+
+        lxi sp, HOST_SP-2 ; reset SP before we make any calls
 
         lxi h, intflg
         mvi a, RQ_EMT
@@ -301,24 +515,93 @@ vm1int_rsvd_not:
         lxi h, 20q
         jmp tm1_loop_enter_interrupt
 vm1int_iot_not:
-        hlt
+        mvi a, RQ_BPT
+        ana m
+        jz vm1int_bpt_not
+        mvi a, ~RQ_BPT
+        ana m
+        mov m, a
+        lxi h, 14q
+        jmp tm1_loop_enter_interrupt
+vm1int_bpt_not:
+        mvi a, RQ_IORQ
+        ana m
+        jz vm1int_iorq_not
+        ;
+        ; check P
+        ;
+        lda rpsw
+        ani PSW_P
+        jnz tm1_loop_end  ; ignore IO while P bit set
+
+          ; IO rq
+          lxi h, intflg_io
+          mvi a, IORQ_RX
+          ana m
+          jnz vm1int_iorq_rx
+          mvi a, IORQ_XCSR
+          ana m
+          jnz vm1int_iorq_xcsr
+          mvi a, IORQ_RCSR
+          ana m
+          jnz vm1int_iorq_rcsr
+        
+        ; if RQ_IORQ was raised but none of IORQ_* are set, drop RQ_IORQ flag and continue
+        lxi h, intflg
+        mvi a, ~RQ_IORQ
+        ana m
+        mov m, a
+        jmp tm1_loop_end
+
+vm1int_iorq_not:
+        hlt     
         jmp $   ; impossible, stop
+
+          ;
+          ; cleanup iorq
+          ; 
+vm1int_iorq_update:
+          lxi h, intflg_io
+          xra a
+          ora m
+          rnz               ; some interrupts unserved, continue
+          lxi h, intflg
+          mvi a, ~RQ_IORQ   ; reset IORQ if no pending IO interrupts
+          ana m
+          mov m, a
+          ret
+
+vm1int_iorq_rx:
+        mvi a, ~IORQ_RX     ; clear intflg_io.IORQ_RX
+        ana m
+        mov m, a
+        call vm1int_iorq_update
+        lxi h, 0264q         ; RX vector 264
+        jmp tm1_loop_enter_interrupt
+
+vm1int_iorq_xcsr:
+        mvi a, ~IORQ_XCSR
+        ana m
+        mov m, a
+        call vm1int_iorq_update
+        lxi h, 064q         ; XCSR vector 64
+        jmp tm1_loop_enter_interrupt
+vm1int_iorq_rcsr:
+        mvi a, ~IORQ_RCSR
+        ana m
+        mov m, a
+        call vm1int_iorq_update
+        lxi h, 060q         ; RCSR vector 60
+        jmp tm1_loop_enter_interrupt
+
 
 tm1_loop_enter_interrupt:
         lxi d, tm1_loop_end
         push d
         jmp opx_interrupt
-#ifdef TESTBENCH        
-tm1_loop_end:
-        lhld vm1_opcode
-        mov a, h
-        ora l
-        jnz tm1_loop
-        hlt
-#endif
 
         ;ALIGN_16
-        .org 1000q
+        ; why is this here? .org 1000q
 test_mov1_pgm:
 #ifdef TEST_MOV
         .dw 012700q, 1    ; mov #1, r0
@@ -1078,22 +1361,24 @@ test_opcode_table:
 
 ; test rst1
 rst1_handler:
-        lhld vm1_opcode
+        #ifdef DEBUG_OPCODES
+        xchg
         call hl_to_hexstr
 
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
   
         call putsi \ .db " opcode not implemented", 10, 13, '$'
+        #endif
         pop h
 
         ;; trap to 10
 
-        ;lxi h, intflg
-        ;mvi a, RQ_RSVD
-        ;ora m
-        ;mov m, a
+        lxi h, intflg
+        mvi a, RQ_RSVD
+        ora m
+        mov m, a
         ;pop psw         ; drop normal return addr
         ret
 
@@ -1136,7 +1421,7 @@ putsi:
         pop d
         push d
         mvi c, 9
-        call 5
+        CALL_BDOS
         mvi a, '$'
         pop h
 putsi_l0:        
@@ -1162,7 +1447,7 @@ assert8_trap:
         call hl_to_hexstr
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         ;
         call putsi \ .db " e=$"
         pop h
@@ -1170,7 +1455,7 @@ assert8_trap:
         call hl_to_hexstr
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         
         call putsi \ .db " expected=$"
         pop psw
@@ -1179,7 +1464,7 @@ assert8_trap:
         call hl_to_hexstr
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         
         rst 0
 
@@ -1204,7 +1489,7 @@ assert_trap:
         call putsi \ .db "assert at $"
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         
         call putsi \ .db " act=$"
 
@@ -1212,7 +1497,7 @@ assert_trap:
         call hl_to_hexstr
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
         
         ; expected
         lhld assert_adr
@@ -1224,7 +1509,7 @@ assert_trap:
         call putsi \ .db " exp=$"
         lxi d, hexstr
         mvi c, 9
-        call 5
+        CALL_BDOS
 assert_trap_nl_exit:
         call putsi \ .db 10, 13, "$"
         
@@ -1254,11 +1539,11 @@ assert_mem_trap:
           lhld assert_adr
           dcx h \ dcx h \ dcx h \ call hl_to_hexstr
           call putsi \ .db "assert at $"
-          lxi d, hexstr \ mvi c, 9 \ call 5
+          lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
         pop h 
         call hl_to_hexstr
         call putsi \ .db " act=$"
-        lxi d, hexstr \ mvi c, 9 \ call 5
+        lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 
         jmp assert_reg_trap_exp
 
@@ -1282,7 +1567,7 @@ assert_reg_trap:
         push h
         dcx h \ dcx h \ dcx h \ call hl_to_hexstr
         call putsi \ .db "assert at $"
-        lxi d, hexstr \ mvi c, 9 \ call 5
+        lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 
         pop h
         mov e, m \ inx h \ mov d, m
@@ -1291,14 +1576,14 @@ assert_reg_trap:
         xchg
         call hl_to_hexstr
         call putsi \ .db " act=$"
-        lxi d, hexstr \ mvi c, 9 \ call 5
+        lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 assert_reg_trap_exp:
         lhld assert_adr
         inx h \ inx h
         mov e, m \ inx h \ mov d, m \ xchg
         call hl_to_hexstr
         call putsi \ .db " exp=$"
-        lxi d, hexstr \ mvi c, 9 \ call 5
+        lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 
         jmp assert_trap_nl_exit
 
@@ -1333,7 +1618,7 @@ hexstr:  .db 0, 0, 0, 0, "$"
         ; clear $1000..$2fff
 clearmem:
 #ifdef #WITH_KVAZ
-        di
+        DISINT
         lxi h, 0
         dad sp
         shld clearmem_sp
@@ -1354,7 +1639,7 @@ clearmem_loop:
 
 clearmem_sp .equ $+1
         lxi sp, 0
-        ei
+        ENAINT
 #endif
         lxi h, $1000
         lxi b, $3000
@@ -1366,9 +1651,7 @@ clearmem_l0:
         jnz clearmem_l0
         ret
 
-;#ifndef TESTBENCH
         .include "loader.asm"
-;#endif
         
         ;
         ;
@@ -1393,11 +1676,23 @@ vm1_reset_l1:
         ret
 
         
+; fixed stack layout
+;
+;     . . .
+; HOST_SP - 6   <instruction handler stack>
+; HOST_SP - 4   vm1_exec_return
+; HOST_SP - 2   vm1_opcode 
+; HOST_SP       -- TOS    
+
+; new layout -- vm1_opcode is in normal space
+;
+; HOST_SP - 4   <instruction handler stack>
+; HOST_SP - 2   vm1_exec_return                 ; sp load value
+; HOST_SP       -- TOS    
 
 
-
-;vm1_opcode:     .dw 0
-vm1_opcode .equ $100-2
+vm1_opcode_x:     .dw 0
+;vm1_opcode .equ HOST_SP-2
 vm1_addrmode:   .db 0
 
         .org ( $ + 0FFH) & 0FF00H ; align 256
@@ -1883,7 +2178,8 @@ r6:     .dw 0
 r7:     .dw 0
 rpsw:   .dw 0
 
-intflg: .db 0
+;intflg:     .db 0
+intflg_io:  .db 0
 
 regfile_end .equ $
 
@@ -2043,21 +2339,18 @@ ldbmode1:
         ; (R)+
 ldbmode2:
         xchg
-        LOAD_DE_FROM_HL_REG ; load register
+        LOAD_DE_FROM_HL_REG ; load register, inx h
         push d  ; push EA addr
-          ;push h  ; save reg addr + 1
             ; R += 1, but R6 and R7 += 2
             inx d
-            ; r6, r7 the increment is always 2
-              mvi a, r5 & 255
-              cmp l   ; &r5 - l
+              mvi a, (r5 + 1) & 255  ; +1 because FROM_HL_REG leaves hl + 1
+              cmp l   ; (&r5 + 1) - (&R + 1)
               jp $+4
               inx d
               ; ---- 
 
-          ;pop h ; h <- reg addr + 1
           STORE_DE_TO_HL_REG_REVERSE
-        pop h
+        pop h ; restore EA addr      -- TODO: optimize away push/pop, but tests cover byte ops poorly
         JMP_LOAD_E_FROM_HL
 
         .org load8 + (32*3)
@@ -2084,18 +2377,18 @@ ldbmode3:
         ; -(R)
 ldbmode4:  
         xchg
-        LOAD_DE_FROM_HL_REG
+        LOAD_DE_FROM_HL_REG ; load register, inx h
+        ; hl = reg addr + 1
         ; R -= 1
         dcx d
         ; r6, r7 the decrement is always 2
-          mvi a, r5 & 255
-          cmp l   ; &r5 - l
+          mvi a, (r5 + 1) & 255  ; +1 because FROM_HL_REG leaves hl + 1
+          cmp l   ; (&r5 + 1) - (&R + 1)
           jp $+4
           dcx d
           ; --- 
         STORE_DE_TO_HL_REG_REVERSE
         xchg                    ; hl = reg
-        ;mov e, m
         JMP_LOAD_E_FROM_HL
         
         .org load8 + (32*5)
@@ -2116,7 +2409,7 @@ ldbmode5:
 ldbmode6:
         push d
           lhld r7
-          LOAD_DE_FROM_HL         ; hidden inx h
+          LOAD_DE_FROM_HL
           inx h \ inx h           ; = pc + 2
           shld r7
         pop h
@@ -2147,10 +2440,10 @@ stwmode1: ; *reg16[dst] = BC
 
         .org store16 + (32*2)
 stwmode2: ; *reg16[dst] = BC, reg16[dst] += 2
-        xchg                  ; hl = reg16[dst]
+        xchg                  ; hl <- R
         STORE_BC_TO_HL
-        inx h \ inx h
-        xchg                  ; hl = &reg16[dst], de = reg16[dst] + 2
+        inx h \ inx h         ; R <- R + 2
+        xchg                  ; hl <- &R, de <- R
         STORE_DE_TO_HL_REG
         ret
 
@@ -2221,15 +2514,15 @@ stwmode7:
 store8:
 stbmode0: ; reg16[dst].lsb = C
         ; for movb, store sign-extended value in reg
-        lda vm1_opcode+1
-        ani $f0
-        cpi $90   ; opcode = MOVB 11ssdd
-        jz stbmode0_with_sex
+        ;;;;lda vm1_opcode+1
+        ;;;;ani $f0
+        ;;;;cpi $90   ; opcode = MOVB 11ssdd
+        ;;;;jz stbmode0_with_sex
         STORE_C_TO_HL_REG
         ret
-stbmode0_with_sex:
-        STORE_BC_TO_HL_REG   ; store sign extended byte to reg
-        ret
+;stbmode0_with_sex:
+;        STORE_BC_TO_HL_REG   ; store sign extended byte to reg
+;        ret
         
         .org store8 + (32*1)
 stbmode1: ; *reg16[dst] = BC
@@ -2237,14 +2530,15 @@ stbmode1: ; *reg16[dst] = BC
         JMP_STORE_C_TO_HL
 
         .org store8 + (32*2)
+        ; de = R, hl = &R, bc = value
 stbmode2: ; *reg16[dst] = C, reg16[dst] += 1
-        xchg                  ; hl = reg16[dst], de = &reg16[dst]
-        STORE_C_TO_HL
-        xchg
+        xchg                  ; hl <- R, de <- &R
+        STORE_C_TO_HL         ; hl doesn't change
+        xchg                  ; hl <- &R, de <- R
         inx d                 ; R += 1
 
-        mvi a, r5 & 255
-        cmp l
+        mvi a, r5 & 255       ; 
+        cmp l                 ; &r5 - &R: r4: +, r5: +z, r6: -
         jp $+4
         inx d               ; R += 2 for SP, PC
 
@@ -2264,6 +2558,11 @@ stbmode3: ; **reg16[dst] = C, reg16[dst] += 2
 stbmode4:
         ; reg16[dst] -= 1, *reg16[dst] = BC
         dcx d                 ; de = reg16[dst] - 1
+        ; r6, r7 the decrement is always 2
+          mvi a, r5 & 255 
+          cmp l               ; &r5 - &R: r4: +, r5: +z, r6: -
+          jp $+4
+          dcx d
         STORE_DE_TO_HL_REG    ; reg16[dst] -= 1
         xchg
         JMP_STORE_C_TO_HL
@@ -2444,6 +2743,9 @@ opc_rts:
         ret
 
 opc_rtt:  
+        ; TODO inhibits Trace Trap.
+        ; if new PS has T bit set, trap will occur after execution of
+        ; first instruction after RTT
         nop
 opc_rti:  
         lhld r6
@@ -2623,11 +2925,13 @@ opc_jsr:
         ;   R = R7
         ;   R7 = temp
         
-        xchg
-          call load_dd16
-                 ; h = new address
-          xchg  ; de = EA
-        lhld vm1_opcode
+        push d
+          xchg
+            call load_dd16
+                   ; h = new address
+            xchg  ; de = EA
+        pop h
+        ;lhld vm1_opcode
         push d ; save EA
           dad h
           dad h
@@ -2768,9 +3072,43 @@ _inc_n:
         ret
         
 opc_dec:   
-        call load_de_dd16
+        ;call load_de_dd16
+
+        ; ------- inline load_de_dd16 + vm1_addrmode local
+        ; select addr mode
+        mvi a, 070q
+        ana e
+        sta _dec_addrmode ; local!
+        ral \ ral ; addr mode * 32
+        mov l, a  ; l = lsb load16[addr mode]
+        mvi a, 007q
+        ana e
+        ral
+        mov e, a  ; e = lsb reg16
+
+        lxi b, _dec_load_dd16_return
+        push b
+        mvi h, load16 >> 8
+        mvi d, regfile >> 8
+        pchl
+
+_dec_load_dd16_return:
+        ; ------------------------------------------------
+
         dcx d
-        call _store_de_hl_addrmode
+
+        ;call _store_de_hl_addrmode
+; ----macro _store_de_hl_addrmode:
+_dec_addrmode .equ $+1
+        mvi a, 0
+        ora a
+        jz _dec_sdeha_reg
+        STORE_DE_TO_HL
+        jmp _dec_xx2
+_dec_sdeha_reg:
+        STORE_DE_TO_HL_REG
+_dec_xx2:
+;; ----------------------------
 
         ; aluf NZV
         lxi h, rpsw
@@ -2965,7 +3303,7 @@ _tst_n:
 
 opc_tstb:
         xchg
-        call load_dd8
+        call load_dd8_noam
         lxi h, rpsw
         mvi a, ~(PSW_N | PSW_Z | PSW_V | PSW_C)
         ana m
@@ -3085,7 +3423,6 @@ _rol_load_dd16_return:
         mov l, a
 
         xchg
-        ;call _store_de_hl_addrmode_bc  ;; 24 + 12 + 12 vs lhld vm1_opcode \ jmp _store_de_hl_addrmode  20 + 12
 
 ;;; -------------- macro store_de_hl_addrmode_bc
 
@@ -3375,28 +3712,14 @@ opc_sxt:
         jmp store_dd16
 
 opc_bit:
-;        ; debug BREAK ------ - -   -
-;        lda r7
-;        cpi (10506q & 377q)
-;        jnz notthat
-;        lda r7+1
-;        cpi (10506q >> 8)
-;        jnz notthat
-;        ;hlt
-;        mvi a, $76 ; hlt
-;        sta killswitch
-;notthat:
-;        ; -  --  ----   -------------------
-;killswitch:   nop
-
         ; 03ssdd bit ss, dd: src & dst, N=msb, Z=z, V=0, C not touched
         xchg
-        ;push h
+        push h
           call load_ss16_noam
           mov b, d        ; bc <- src
           mov c, e
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
 
         ;push b
           call load_dd16_noam    ; de <- dst
@@ -3433,10 +3756,12 @@ bit_n:  mvi a, PSW_N
 opc_bic:
         ; 04ssdd bic ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C not touched
         xchg
-        call load_ss16_noam
-        mov b, d
-        mov c, e        ; bc <- src
-        lhld vm1_opcode
+        push h
+          call load_ss16_noam
+          mov b, d
+          mov c, e        ; bc <- src
+        pop h
+        ;lhld vm1_opcode
         ;push b
           call load_dd16    ; de <- dst, hl = dst+1
         ;pop b
@@ -3456,12 +3781,12 @@ opc_bic:
 opc_bis:
         ; 05ssdd bis ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
         xchg
-        ;push h
+        push h
           call load_ss16_noam
           mov b, d
           mov c, e
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         ;push b
           call load_dd16
         ;pop b
@@ -3478,11 +3803,11 @@ opc_bis:
 opc_bitb:
         ; 13ssdd bitb ss, dd: src & dst, N=msb, Z=z, V=0, C no touchy
         xchg
-        ;push h
+        push h
           call load_ss8_noam
           mov c, e        ; <- src
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         push b
           call load_dd8_noam
         pop b
@@ -3511,11 +3836,11 @@ bitb_n: mvi a, PSW_N
 opc_bicb:
         ; 14ssdd bicb ss, dd: dst <- dst & ~src, N=msb, Z=z, V=0, C no touchy
         xchg
-        ;push h
+        push h
           call load_ss8_noam
           mov c, e
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         push b
           call load_dd8
         pop b
@@ -3529,11 +3854,11 @@ opc_bicb:
 opc_bisb:
         ; 15ssdd bisb ss, dd: dst <- dst | src, N=msb, Z=z, V=0, C no touchy
         xchg
-        ;push h
+        push h
           call load_ss8_noam
           mov c, e
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         push b
           call load_dd8
         pop b
@@ -3545,10 +3870,12 @@ opc_bisb:
 
 opc_add:
         xchg
-        call load_ss16_noam
-        mov b, d
-        mov c, e
-        lhld vm1_opcode
+        push h
+          call load_ss16_noam
+          mov b, d
+          mov c, e
+        pop h
+        ;lhld vm1_opcode
         ;push b
           call load_dd16
         ;pop b
@@ -3601,10 +3928,12 @@ _add_flags_done:
 
 opc_sub:
         xchg
+        push h
           call load_ss16_noam
           mov b, d
           mov c, e
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         ;push b
           call load_dd16
         ;pop b
@@ -3642,12 +3971,12 @@ opc_sub:
 opc_cmp: 
         ; 02ssdd CMP ss, dd   src - dst -> flags
         xchg
-        ;push h
+        push h
           call load_ss16_noam
           mov b, d
           mov c, e        ; bc <- src
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
 
         ;push b
           call load_dd16_noam  ; de <- dst
@@ -3708,11 +4037,11 @@ cmp_n:
 opc_cmpb:
         ; 12ssdd CMP ss, dd  src - dst -> flags
         xchg
-        ;push h
+        push h
           call load_ss8_noam
           mov c, e      ; c <- src
-        ;pop h
-        lhld vm1_opcode
+        pop h
+        ;lhld vm1_opcode
         push b
           call load_dd8_noam   ; e <- dst
         pop b
@@ -3829,7 +4158,8 @@ opc_halt:
         ;lxi b, 4
         ;SAVE_DE_TO_HL
 opc_wait: 
-        rst 1
+        ; just do nothing
+        ret
 opc_bpt:  
         mvi a, RQ_BPT
         jmp _raise_irq_a
@@ -3837,7 +4167,10 @@ opc_iot:
         mvi a, RQ_IOT
         jmp _raise_irq_a
 opc_reset:  
-        rst 1
+        call rcsr_init
+        call xcsr_init
+        call rxdrv_init
+        ret
 opc_emt:
         mvi a, RQ_EMT
         jmp _raise_irq_a
@@ -3880,9 +4213,19 @@ opx_interrupt:
         shld r7
         xchg
         inx h \ inx h
-        LOAD_DE_FROM_HL
-        mov l, e
-        mvi h, 0
+        LOAD_DE_FROM_HL   ; de <- PS
+
+        ; load nzvc but don't touch the rest --- why?
+        ;mvi a, $f
+        ;ana e
+        ;mov e, a      ; mask nzvc from vector
+        ;lxi h, rpsw
+        ;mvi a, $f0
+        ;ana m
+        ;ora e         ; set nzvc from vector
+        ;mov m, a
+
+        xchg
         shld rpsw
         ret
 
@@ -4073,6 +4416,9 @@ _sbcb_tv:
 opc_mfps:
         ; 1067dd: psw -> dst
         ;push d #LHLD_OPCODE
+        xchg
+        ;shld vm1_opcode_x
+        push h
           lhld rpsw
           mov c, l
           jmp movb_setaluf_and_store
@@ -4111,7 +4457,23 @@ opc_mtpd:
         rst 1
 
 opc_real_mov:
+;        ; debug BREAK ------ - -   -
+;        lda r7
+;        cpi (130q & 377q)
+;        jnz notthat
+;        lda r7+1
+;        cpi (130q >> 8)
+;        jnz notthat
+;        ;hlt
+;        mvi a, $76 ; hlt
+;        sta killswitch
+;notthat:
+;        ; -  --  ----   -------------------
+;killswitch:   nop ; want hl = fe78
+
         xchg  ; opcode was in de -> hl
+        ;shld vm1_opcode_x ; needed for store_dd16, but actually only lsb
+        push h
        
         ;call load_ss16
         ;; -- inline load_ss16
@@ -4148,7 +4510,8 @@ mov_setaluf_and_store:
         mvi a, ~(PSW_Z | PSW_N | PSW_V)
         ana m
         mov m, a
-        lhld vm1_opcode
+        ;lhld vm1_opcode_x
+        pop h
         jmp store_dd16
 
 _mov_setaluf_n:
@@ -4158,7 +4521,8 @@ _mov_setaluf_n:
         ana m
         ori PSW_N
         mov m, a
-        lhld vm1_opcode
+        ;lhld vm1_opcode_x
+        pop h
         jmp store_dd16
 
 _mov_setaluf_z:
@@ -4168,11 +4532,14 @@ _mov_setaluf_z:
         ana m
         ori PSW_Z
         mov m, a
-        lhld vm1_opcode
+        ;lhld vm1_opcode_x
+        pop h
         jmp store_dd16
 
 real_opc_movb:
         xchg  ; opcode was in de -> hl
+        ;shld vm1_opcode_x ; for store_dd8
+        push h 
         ;call load_ss8
         ; ----- inline load_ss8
         dad h
@@ -4186,7 +4553,7 @@ real_opc_movb:
         ral
         mov e, a  ; l = lsb reg16
 
-        lxi b, _movb_ss8_loaded   ; if no interrupts we could just lxi sp, <place with good return address>
+        lxi b, _movb_ss8_loaded
         push b
         
         mvi h, load8 >> 8
@@ -4207,8 +4574,14 @@ movb_setaluf_and_store:
         mvi a, ~(PSW_Z | PSW_N | PSW_V)
         ana m
         mov m, a
-        lhld vm1_opcode
-        jmp store_dd8
+        ;lhld vm1_opcode_x
+        pop h
+
+        mvi a, 070q    ; check dd addrmode
+        ana l
+        jnz store_dd8  ; -> regular 
+        jmp store_dd16 ; -> sex
+
 _movb_setaluf_n:
         ; set N, - sex
         lxi h, rpsw
@@ -4217,8 +4590,14 @@ _movb_setaluf_n:
         ana m
         ori PSW_N
         mov m, a
-        lhld vm1_opcode
-        jmp store_dd8
+        ;lhld vm1_opcode_x
+        pop h
+
+        mvi a, 070q    ; check dd addrmode
+        ana l
+        jnz store_dd8  ; -> regular 
+        jmp store_dd16 ; -> sex
+
 _movb_setaluf_z:
         ; set Z, + sex
         lxi h, rpsw
@@ -4227,8 +4606,13 @@ _movb_setaluf_z:
         ana m
         ori PSW_Z
         mov m, a
-        lhld vm1_opcode
-        jmp store_dd8
+        ;lhld vm1_opcode_x
+        pop h
+
+        mvi a, 070q    ; check dd addrmode
+        ana l
+        jnz store_dd8  ; -> regular 
+        jmp store_dd16 ; -> sex
 
 
 #ifdef TEST_ADDRMODES
@@ -4832,5 +5216,7 @@ test_storeb_7:
 #endif ; ADDRMODES
 
         .include "kvzproc2.asm"
+        .include "rxdrv.asm"
+        .include "mul24.asm"
 
 .end

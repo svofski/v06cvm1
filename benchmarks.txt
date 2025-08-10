@@ -16,3 +16,17 @@ tailstr:115519562 tail call store to addrmode
 	113762758 rol with inline load_dd16 and local addrmode
 	113721854 ror with inline load_dd16 and local addrmode
 	113350613 no save addrmode where applicable 5:36.5  ~ 74.7x
+
+things happened
+
+rt11 baseline (test.bas)
+        113762595 - current basic bench
+	111675095 - lxi sp
+	112480655 - pchl -> jmp, but!
+
+new baseline (changed looping in testbench)
+        106975995
+	105397127 - removed global vm1_opcode
+        105344123 - dec inlined load and store
+        104164024 - push/pop instead of vm1_opcode_x in mov/movb
+       (102118328) - without ODD_ADDR_CHECK
