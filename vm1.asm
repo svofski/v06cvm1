@@ -4059,7 +4059,8 @@ opc_halt:
         ;lxi b, 4
         ;SAVE_DE_TO_HL
 opc_wait: 
-        rst 1
+        ; just do nothing
+        ret
 opc_bpt:  
         mvi a, RQ_BPT
         jmp _raise_irq_a
@@ -4317,7 +4318,8 @@ opc_mfps:
         ; 1067dd: psw -> dst
         ;push d #LHLD_OPCODE
         xchg
-        shld vm1_opcode_x
+        ;shld vm1_opcode_x
+        push h
           lhld rpsw
           mov c, l
           jmp movb_setaluf_and_store
@@ -4371,7 +4373,8 @@ opc_real_mov:
 ;killswitch:   nop ; want hl = fe78
 
         xchg  ; opcode was in de -> hl
-        shld vm1_opcode_x ; needed for store_dd16, but actually only lsb
+        ;shld vm1_opcode_x ; needed for store_dd16, but actually only lsb
+        push h
        
         ;call load_ss16
         ;; -- inline load_ss16
@@ -4408,7 +4411,8 @@ mov_setaluf_and_store:
         mvi a, ~(PSW_Z | PSW_N | PSW_V)
         ana m
         mov m, a
-        lhld vm1_opcode_x
+        ;lhld vm1_opcode_x
+        pop h
         jmp store_dd16
 
 _mov_setaluf_n:
@@ -4418,7 +4422,8 @@ _mov_setaluf_n:
         ana m
         ori PSW_N
         mov m, a
-        lhld vm1_opcode_x
+        ;lhld vm1_opcode_x
+        pop h
         jmp store_dd16
 
 _mov_setaluf_z:
@@ -4428,12 +4433,14 @@ _mov_setaluf_z:
         ana m
         ori PSW_Z
         mov m, a
-        lhld vm1_opcode_x
+        ;lhld vm1_opcode_x
+        pop h
         jmp store_dd16
 
 real_opc_movb:
         xchg  ; opcode was in de -> hl
-        shld vm1_opcode_x ; for store_dd8
+        ;shld vm1_opcode_x ; for store_dd8
+        push h 
         ;call load_ss8
         ; ----- inline load_ss8
         dad h
@@ -4468,7 +4475,8 @@ movb_setaluf_and_store:
         mvi a, ~(PSW_Z | PSW_N | PSW_V)
         ana m
         mov m, a
-        lhld vm1_opcode_x
+        ;lhld vm1_opcode_x
+        pop h
 
         mvi a, 070q    ; check dd addrmode
         ana l
@@ -4483,7 +4491,8 @@ _movb_setaluf_n:
         ana m
         ori PSW_N
         mov m, a
-        lhld vm1_opcode_x
+        ;lhld vm1_opcode_x
+        pop h
 
         mvi a, 070q    ; check dd addrmode
         ana l
@@ -4498,7 +4507,8 @@ _movb_setaluf_z:
         ana m
         ori PSW_Z
         mov m, a
-        lhld vm1_opcode_x
+        ;lhld vm1_opcode_x
+        pop h
 
         mvi a, 070q    ; check dd addrmode
         ana l

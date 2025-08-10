@@ -2,6 +2,10 @@
 #define ROM_START $c000
 #endif
 
+; standard for vm1 is to ignore the lower bit in word ops
+; undefine to ignore this, hoping for well-behaved software
+;#define ODD_ADDR_CHECK
+
 #define IO_MSB $f4    ; 172000 and up
 
 ;		.org 100h
@@ -24,17 +28,19 @@
 		jmp $
 
 kvazreadDEeven:
+#ifdef ODD_ADDR_CHECK
                 mvi a, $fe
                 ana l
                 mov l, a
+#endif
 
 ;Input: address - HL
 ;Output: data - DE
 kvazreadDE:
-                mvi a, IO_MSB
-                ana h
-                cpi IO_MSB
-                jz readregDE
+                mvi a, IO_MSB-1
+                cmp h ; $f3 - h:  f3: nc f4: c...
+                jc readregDE
+
                 push h
 		  xchg			;DE=address
 		  lxi h,0
@@ -54,18 +60,19 @@ kvazreadDE:
 		ret
 
 kvazreadBCeven:
+#ifdef ODD_ADDR_CHECK
                 mvi a, $fe
                 ana l
                 mov l, a
+#endif
 
 ;Input: address - HL
 ;Output: data - BC
 ; clobbers DE!!!
 kvazreadBC:
-                mvi a, IO_MSB
-                ana h
-                cpi IO_MSB
-                jz readregDE
+                mvi a, IO_MSB-1
+                cmp h
+                jc readregDE
 
                 ;push d
                   push h
@@ -89,83 +96,20 @@ kvazreadBC:
                 ret
 
 
-
-#if 0
-kvazinsnfetch:
-          lhld r7               ; 20 + 12 + 8 + 4 + 12 + 8 + 8 + 4 + 12 = 88
-          lxi d, prefetched_addr
-          ldax d
-          cmp l
-          jnz prefetch_miss
-          inx d
-          ldax d
-          cmp h
-          jnz prefetch_miss
-
-          ; hit
-          inx h \ inx h
-          shld r7
-          lhld prefetched_word
-          ret
-
-prefetch_miss:
-          xchg
-          lxi h,0
-          DISINT
-          dad sp
-          mvi a,kvazbank
-          out kvazport
-          xchg
-          sphl
-          xchg
-          pop d
-          pop b   ; read-ahead
-          xra a
-          out kvazport
-          sphl
-          ENAINT
-        mov h, b
-        mov l, c
-        shld prefetched_word      ; 8 + 8 + 20; lxi \ mov \ inx \ mov  = 12 + 8 + 8 + 8
-
-        lhld r7
-        inx h \ inx h 
-        shld r7
-        shld prefetched_addr
-        xchg   ; hl = opcode
-        ret
-
-prefetched_word:  .dw 0
-prefetched_addr:  .dw 1
-#endif
-
-
-;kvazwriteDEeven:
-;                mvi a, $fe
-;                ana l
-;                mov l, a
-;                ; [hl] <- de
-;kvazwriteDE:
-;                ;push b
-;                mov b, d
-;                mov c, e
-;                call kvazwriteBC
-;                ;pop b
-;                ;ret
-
 kvazwriteDEeven:
                 mov b, d
                 mov c, e
 kvazwriteBCeven:                  ; 8 + 4 + 8 + 8 + 4 + 12 = 
+#ifdef ODD_ADDR_CHECK                
                 mvi a, $fe
                 ana l
                 mov l, a
+#endif
 ;Input: address - HL, data - BC
 kvazwriteBC:
-                mvi a, IO_MSB
-                ana h
-                cpi IO_MSB
-                jz writeregBC
+                mvi a, IO_MSB-1
+                cmp h
+                jc writeregBC
 #ifdef ROM_START
                 mvi a, (ROM_START >> 8) - 1
                 cmp h
