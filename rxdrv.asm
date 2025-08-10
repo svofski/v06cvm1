@@ -52,7 +52,21 @@ rxdrv_dismount:
         jmp close_fcb1
 
 write_rxdrv_csr:
-        ; 
+        ;;----------------------------------
+        push h
+        push d
+        push b
+        mov h, b
+        mov l, c
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+        call putsi \ .db "->rxdrv_csr", 10, 10, '$'
+        pop b
+        pop d
+        pop h
+        ;--------------------------------- 
         mvi a, RX_INIT >> 8
         ana b
         jnz _rxdrv_init
@@ -72,7 +86,7 @@ write_rxdrv_csr:
         sta rxdrv_cmd
         xra a
         sta rxdrv_param_stage
-        ; if (value & GO) start_command()
+        ; if (value & GO) start_command() -- but what if not GO?
         mvi a, RX_GO
         ana c
         sta rxdrv_go
@@ -347,4 +361,5 @@ _rxdrv_1:
 
 
 ;imgname:    .db "RT11SJ01DSK", 0
-imgname:    .db "STALK   DSK", 0
+;imgname:    .db "STALK   DSK", 0
+imgname:    .db "ADVENT  DSK", 0
