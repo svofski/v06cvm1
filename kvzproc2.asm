@@ -196,9 +196,18 @@ kvazwriteBC:
 
 ;Input: address - HL, data - C
 kvazwriteC:
-                inr h
+                ;inr h
+                ;jz writeregC
+                ;dcr h
+                mvi a, IO_MSB
+                ana h
+                cpi IO_MSB
                 jz writeregC
-                dcr h
+#ifdef ROM_START
+                mvi a, (ROM_START >> 8) - 1
+                cmp h
+                jc jmp_trap
+#endif
                 push d
                   push h
 		    xchg			;DE=address

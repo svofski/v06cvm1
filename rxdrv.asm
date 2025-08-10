@@ -1,5 +1,8 @@
 ; RX floppy disk 
 
+; print info about register writes
+; #define HYPERDEBUG
+
 SECTOR_SIZE         .equ 128
 SECTORS_PER_TRACK   .equ 26
 TRACKS              .equ 77
@@ -52,6 +55,7 @@ rxdrv_dismount:
         jmp close_fcb1
 
 write_rxdrv_csr:
+#ifdef HYPERDEBUG
         ;;----------------------------------
         push h
         push d
@@ -62,11 +66,12 @@ write_rxdrv_csr:
         lxi d, hexstr
         mvi c, 9
         CALL_BDOS
-        call putsi \ .db "->rxdrv_csr", 10, 10, '$'
+        call putsi \ .db "->rxdrv_csr", 13, 10, '$'
         pop b
         pop d
         pop h
         ;--------------------------------- 
+#endif      
         mvi a, RX_INIT >> 8
         ana b
         jnz _rxdrv_init
@@ -104,17 +109,87 @@ write_rxdrv_csr:
 
         ; data in BC
 write_rxdrv_data:
+#ifdef HYPERDEBUG
+        ;;----------------------------------
+        push h
+        push d
+        push b
+        lda rxdrv_cmd
+        mov h, a
+        mov l, c
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+        call putsi \ .db "->rxdrv_data", 13, 10, '$'
+        pop b
+        pop d
+        pop h
+        ;--------------------------------- 
+#endif      
         ; receive param
         lda rxdrv_cmd
         cpi CMD_READ
-        rnz 
+        jz _rxdrv_wr_cmd_read
+        cpi CMD_FILL
+        jz _rxdrv_wr_cmd_fill
+        cpi CMD_WRITE
+        jz _rxdrv_wr_cmd_write
+        ret
 
-        ; READ gets 3 params in sequence: track, sector, (drive?)
+_rxdrv_wr_cmd_read:
+        ; READ params: sector, track
         lxi h, rxdrv_param_stage
         mov a, m
         inr m
         ora a \ jz _rxdrv_set_sector  ; case 0: sector
         dcr a \ jz _rxdrv_set_track   ; case 1: track
+        ret
+
+_rxdrv_wr_cmd_write:
+        ; WRITE params: sector, track
+        lxi h, rxdrv_param_stage
+        mov a, m
+        inr m
+        ora a \ jz _rxdrv_set_sector
+        dcr a \ jz _rxdrv_set_track
+        ret
+        
+
+        ; dma[rxdrv_bufofs] = c
+_rxdrv_wr_cmd_fill:
+#ifdef HYPERDEBUG
+        ;;----------------------------------
+        push h
+        push d
+        push b
+        lda rxdrv_bufofs
+        mov l, a
+        mov h, c
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+        call putsi \ .db "->wr_cmd_fill", 13, 10, '$'
+        pop b
+        pop d
+        pop h
+        ;--------------------------------- 
+#endif      
+        lxi h, rxdrv_bufofs
+        xra a
+        ora m
+        rm        ; shouldn't happen but just in case
+        
+        mov e, m
+        mvi d, 0
+        inr m         ; buf_ofs += 1, S flag = 1 when buf_ofs == 0x80
+        push psw      ; remember S bit
+          lxi h, dma
+          dad d       ; dma + buf_ofs
+          mov m, c    ; write byte to buffer
+        pop psw
+        jm _rxdrv_clear_txrq ; clear TXRQ and set DONE
         ret
 
 read_rxdrv_csr:
@@ -159,6 +234,14 @@ _rxdrv_set_track:
         jnz _rxdrv_read_sector
         ret
 
+_rxdrv_set_track_wr:
+        lxi h, rxdrv_track
+        mov m, c
+        lda rxdrv_go
+        ora a
+        jnz _rxdrv_write_sector
+        ret
+
 _rxdrv_set_sector:
         lxi h, rxdrv_sector
         mov m, c
@@ -172,16 +255,18 @@ rxdrv_start_command:
 
         lda rxdrv_cmd
         cpi CMD_READ
-        jz _rxdrv_set_txreq     ; expect params, so set Transfer request
+        jz _rxdrv_set_txreq     ; expect sector, track: set Transfer request
+        cpi CMD_WRITE
+        jz _rxdrv_set_txreq     ; expect sector, track
 
         cpi CMD_EMPTY
         jz _rxdrv_cmd_empty
 
-        cpi CMD_WRITE
-        jz _rxdrv_cmd_write
 
         cpi CMD_FILL
-        jz _rxdrv_cmd_fill
+        jz _rxdrv_cmd_fill    ; fill i/o buffer
+        ; ?
+        ret
 
 
 rxdrv_init:
@@ -245,13 +330,35 @@ _rxdrv_set_done:
         rz
         jmp _rxdrv_set_int
 
-_rxdrv_cmd_write:
 _rxdrv_cmd_fill:
-        lxi h, rxdrv_csr
-        mvi a, RX_DONE
-        ora m
-        mov m, a
-        ret
+#ifdef HYPERDEBUG
+        ;;----------------------------------
+        push h
+        push d
+        push b
+        lda rxdrv_track
+        mov h, a
+        lda rxdrv_sector
+        mov l, a
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+        call putsi \ .db "->rxdrv_cmd_fill", 13, 10, '$'
+        pop b
+        pop d
+        pop h
+        ;--------------------------------- 
+#endif      
+        jmp _rxdrv_cmd_empty   ; same idea
+
+        ;lxi h, rxdrv_bufofs
+        ;mvi m, 0              ; reset buffer offset
+        ;lxi h, rxdrv_csr
+        ;mvi a, RX_TXRQ
+        ;ora m
+        ;mov m, a              ; set TX bit
+        ;ret
 
 _rxdrv_read_sector:
         lda rxdrv_mounted
@@ -281,6 +388,29 @@ _rxdrv_read_sector:
         CALL_BDOS
         ora a
         jnz _rxdrv_seterr
+
+        jmp _rxdrv_set_done
+
+_rxdrv_write_sector:
+#ifdef HYPERDEBUG
+        ;;----------------------------------
+        push h
+        push d
+        push b
+        lda rxdrv_track
+        mov h, a
+        lda rxdrv_sector
+        mov l, a
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+        call putsi \ .db "->rxdrv_write_sector", 13, 10, '$'
+        pop b
+        pop d
+        pop h
+        ;--------------------------------- 
+#endif      
 
         jmp _rxdrv_set_done
 

@@ -4447,7 +4447,7 @@ real_opc_movb:
         ral
         mov e, a  ; l = lsb reg16
 
-        lxi b, _movb_ss8_loaded   ; if no interrupts we could just lxi sp, <place with good return address>
+        lxi b, _movb_ss8_loaded
         push b
         
         mvi h, load8 >> 8
