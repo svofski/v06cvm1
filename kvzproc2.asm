@@ -1,13 +1,3 @@
-#ifdef BASIC
-#define ROM_START $c000
-#endif
-
-; standard for vm1 is to ignore the lower bit in word ops
-; undefine to ignore this, hoping for well-behaved software
-;#define ODD_ADDR_CHECK
-
-#define IO_MSB $f4    ; 172000 and up
-
 ;		.org 100h
 
 

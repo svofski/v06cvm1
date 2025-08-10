@@ -11,8 +11,6 @@ F_CLOSE         .equ 16
 F_READ          .equ 20          ; read next record
 F_READRAND      .equ 33          ; read random record
 
-msg_gamarjoba:
-        .db $1b, $5c, "Trap to 4 for Vector-06c + kvaz - svofski 2025", 0dh, 0ah, "$", 26
 msg_filenotfound:
         .db "Could not open 791401", 0dh, 0ah, "$"
 msg_wtf:
@@ -25,9 +23,6 @@ spinner_i:
         .db 0
 spinner_template:
         .db " ", 27, "D$"
-
-msg_loading:
-        .db "Loading "
 
 #ifdef BASIC
 filename:
@@ -63,19 +58,10 @@ rom_load_addr  .equ 02000q
         .db " $"
 
 load_file:
-        lxi d, msg_gamarjoba
-        mvi c, C_WRITESTR
-        CALL_BDOS
-
         lxi b, filename
         call open_fcb1
         
         jz notfound_error
-
-        ; Loading...
-        lxi d, msg_loading
-        mvi c, C_WRITESTR
-        CALL_BDOS
 
         call ckvaz_init
 

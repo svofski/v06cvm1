@@ -492,4 +492,4 @@ _rxdrv_1:
 
 ;imgname:    .db "RT11SJ01DSK", 0
 ;imgname:    .db "STALK   DSK", 0
-imgname:    .db "ADVENT  DSK", 0
+imgname:    .db RXIMAGE, 0

@@ -1,7 +1,55 @@
-        .org $100
+;
+;   PDP-11/06C 
+;
+;   LSI-11/1801VM1 emulation for Vector-06C with Kvaz
+;
+;
+;   svofski 2025
+;
 
+;
+; Global config options
+;
+
+; rx01 image (256256 bytes) in cp/m fcb format 8+3
+#define RXIMAGE   "ADVENT  DSK"
+
+; BASIC ROM begins at 0140000, 0xc000
+#ifdef BASIC
+#define ROM_START $c000
+#endif
+
+; standard for vm1 is to ignore the lower bit in word ops
+; undefine to remove this, should not matter for well-behaved software
+;#define ODD_ADDR_CHECK
+
+; enables printing I/O debug info from emulator
+;#define HYPERDEBUG
+
+; enables printing undefined opcode info from emulator
+;#define DEBUG_OPCODES
+
+#define IO_MSB $f4    ; I/O area 172000 and up
+
+; pdp-11 ram is located in page 1 of kvaz 1
 #define kvazbank 10h
 #define kvazport 10h
+
+;
+; Options invoked in makefiles:
+;
+; Configuration with RX01
+; #define TEST_RXDEV
+;
+; One of the tests
+; #define TEST_SERIOUSLY
+;
+; ROM BASIC configuration
+; #define BASIC
+
+
+        .org $100
+
 
 #define DISINT   di
 #define ENAINT   ei
@@ -20,7 +68,57 @@ HOST_SP .equ $6000      ; attention
         
         ;jmp test_storew_2_nomsg
 
-        ;call putsi \ .db "pdp11 on 8080 svofski 2025", 10, 13, "$"
+        call putsi \ .db "PDP-11/06C BY SVOFSKI 2025$"
+        
+        #ifdef BASIC
+        call putsi \ .db "/013-BASIC$"
+        #endif
+
+        #ifdef TEST_RXDEV
+        call putsi \ .db "/RX01[", RXIMAGE, "]$"
+        #endif
+
+        #ifdef TEST_SERIOUSLY
+        call putsi \ .db "/SERIOUSLY$"
+        #endif
+
+        #ifdef ROM_START
+        call putsi \ .db "/ROM @$"
+        lxi h, ROM_START
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+        #endif
+
+        call putsi \ .db "/IO @$"
+        lxi h, IO_MSB << 8
+        call hl_to_hexstr
+        lxi d, hexstr
+        mvi c, 9
+        CALL_BDOS
+
+        #ifdef ODD_ADDR_CHECK
+        call putsi \ .db "/ODD=EVEN$"
+        #else
+        call putsi \ .db "/NO ODD CHECK$"
+        #endif
+
+        #ifdef HYPERDEBUG
+        call putsi \ .db "/HYPERDEBUG$"
+        #endif
+
+        #ifdef DEBUG_OPCODES
+        call putsi \ .db "/DEBUG OPCODES$"
+        #else
+        call putsi \ .db "/UNDEF OPCODES NOT REPORTED$"
+        #endif
+
+        #ifdef TESTBENCH
+        call putsi \ .db "/TESTBENCH$"
+        #endif
+
+        call putsi \ .db 13, 10, "$"
 
 ; load DE from REGISTER mem, addr in HL
 #define LOAD_DE_FROM_HL_REG           mov e, m \ inx h \ mov d, m
@@ -1263,7 +1361,7 @@ test_opcode_table:
 
 ; test rst1
 rst1_handler:
-        ;lhld vm1_opcode
+        #ifdef DEBUG_OPCODES
         xchg
         call hl_to_hexstr
 
@@ -1272,6 +1370,7 @@ rst1_handler:
         CALL_BDOS
   
         call putsi \ .db " opcode not implemented", 10, 13, '$'
+        #endif
         pop h
 
         ;; trap to 10
