@@ -1,7 +1,8 @@
-BDOS    .equ 5
-fcb1    .equ $5c
-intv    .equ 38h
-dma     .equ $80
+BDOS            .equ 5
+fcb1            .equ $5c                ; default fcb
+fcb2x           .equ $6c                ; pre-filled fcb2
+intv            .equ 38h
+dma             .equ $80
 
         ; BDOS functions
 C_WRITE         .equ 2
@@ -10,6 +11,9 @@ F_OPEN          .equ 15          ; open file
 F_CLOSE         .equ 16
 F_READ          .equ 20          ; read next record
 F_READRAND      .equ 33          ; read random record
+F_WRITERAND     .equ 34          ; write random record
+
+FCB_SIZE        .equ 36
 
 msg_filenotfound:
         .db "Could not open 791401", 0dh, 0ah, "$"
@@ -56,6 +60,10 @@ rom_load_addr  .equ 02000q
 #endif  
 
         .db " $"
+
+        ; actual fcb2
+fcb2:
+        .ds FCB_SIZE
 
 load_file:
         lxi b, filename
@@ -168,22 +176,49 @@ ctk_sp  .equ $ + 1
         ENAINT
         ret
 
+        ; fill fcb1 with name in bc and open it
 open_fcb1:
         lxi d, fcb1 + 1         ; fcb1 name
 cn_L1:  ldax b
         ora a
-        jz fcb_ready 
+        jz open_prepd_fcb1
         stax d
         inx b \ inx d
         jmp cn_L1
-fcb_ready:
-        mvi c, F_OPEN
+open_prepd_fcb1:
         lxi d, fcb1
+open_prepd_fcb:
+        mvi c, F_OPEN
         CALL_BDOS
         inr a
         ret
+
+open_prepd_fcb2:
+        lxi d, fcb2
+        jmp open_prepd_fcb
 
 close_fcb1:
         lxi d, fcb1
         mvi c, F_CLOSE
         jmp BDOS
+close_fcb2:
+        lxi d, fcb2
+        mvi c, F_CLOSE
+        jmp BDOS
+
+        ; copy bc bytes from hl to de
+memcpy:
+        mov a, b
+        ora c
+        rz
+        mov a, m \ inx h
+        stax d \ inx d
+        dcx b
+        jmp memcpy
+        
+
+        ; copy fcb2, which is pre-filled by cp/m from the command line,
+        ; to a safe location where it will not be overwritten by 
+        ; the opened fcb1
+copy_fcb2:
+

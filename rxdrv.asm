@@ -1,7 +1,7 @@
 ; RX floppy disk 
 
 ; print info about register writes
-; #define HYPERDEBUG
+;#define HYPERDEBUG
 
 SECTOR_SIZE         .equ 128
 SECTORS_PER_TRACK   .equ 26
@@ -17,29 +17,53 @@ RX_DISK_SIZE        .equ SECTOR_SIZE * SECTORS_PER_TRACK * TRACKS
 #define RX_GO       $0001
 #define RX_TXRQ     $0080   ;; transfer request
 #define RX_INTE     $0040   ;; interrupt enable
+#define RX_UNIT     $0010   ;; 0 = unit 0, 1 = unit 1 (write-only)
 
 ; RX11 commands (top 3 bits of CSR)
-#define CMD_FILL    000q
-#define CMD_EMPTY   001q
-#define CMD_WRITE   002q
-#define CMD_READ    003q
+#define CMD_FILL    000q    ;; ignores UNITSEL
+#define CMD_EMPTY   001q    ;; ignores UNITSEL
+#define CMD_WRITE   002q    ;; write sector(UNITSEL)
+#define CMD_READ    003q    ;; read sector(UNITSEL)
 #define CMD_STAT    005q
 #define CMD_WRDEL   006q
 #define CMD_RDERR   007q
 
 
 rxdrv_mount:
-        lxi h, rxdrv_csr
-        mvi a, ~RX_DONE
-        ana m
-        mov m, a
+        ; copy provisional fcb2 to the real fcb2
+        lxi b, 16
+        lxi h, fcb2x
+        lxi d, fcb2
+        call memcpy
 
+        lda fcb1+1
+        cpi ' '               ; command line specifies a file?
+        jz _rxdrv_m_default   ; no, use the default from imgname
+        call open_prepd_fcb1  ; yes, open fcb1 in place
+        jmp _rxdrv_m_1opened
+_rxdrv_m_default
         lxi b, imgname
         call open_fcb1
+_rxdrv_m_1opened:
         sta rxdrv_mounted  ; 0 = not mounted
-        ora a
-        rz
+        ; display file/status
+        lxi h, fcb1
+        mvi b, 0           ; unit 0
+        call print_fcb
 
+        ; second file
+        lda fcb2+1
+        cpi ' '
+        jz _rxdrv_m_no2
+
+        call open_prepd_fcb2
+        sta rxdrv_mounted2
+        ; display file/status
+        lxi h, fcb2
+        mvi b, 1          ; unit 1
+        call print_fcb
+
+_rxdrv_m_no2:
         lxi h, rxdrv_csr
         mvi a, RX_DONE
         ora m
@@ -75,19 +99,25 @@ write_rxdrv_csr:
         mvi a, RX_INIT >> 8
         ana b
         jnz _rxdrv_init
-        ; update INTE flag in CSR
+        ; update INTE and UNIT in CSR
         lxi h, rxdrv_csr
-        mvi a, ~RX_INTE
+        mvi a, ~(RX_INTE | RX_UNIT)
         ana m
         mov m, a
-        mvi a, RX_INTE
+        mvi a, RX_INTE | RX_UNIT
         ana c
         ora m
         mov m, a
+        ; clear error
+        inx h
+        mvi m, 0
+        dcx h
+
         ; rxdrv_cmd = (value >> 1) & 7
         xra a
         ora c
         rar
+        ani 7
         sta rxdrv_cmd
         xra a
         sta rxdrv_param_stage
@@ -143,7 +173,7 @@ _rxdrv_wr_cmd_read:
         mov a, m
         inr m
         ora a \ jz _rxdrv_set_sector  ; case 0: sector
-        dcr a \ jz _rxdrv_set_track   ; case 1: track
+        dcr a \ jz _rxdrv_set_track   ; case 1: track and -> _rxdrv_read_sector
         ret
 
 _rxdrv_wr_cmd_write:
@@ -151,8 +181,8 @@ _rxdrv_wr_cmd_write:
         lxi h, rxdrv_param_stage
         mov a, m
         inr m
-        ora a \ jz _rxdrv_set_sector
-        dcr a \ jz _rxdrv_set_track
+        ora a \ jz _rxdrv_set_sector   ; sector
+        dcr a \ jz _rxdrv_set_track_wr ; track and -> _rxdrv_write_sector
         ret
         
 
@@ -360,30 +390,37 @@ _rxdrv_cmd_fill:
         ;mov m, a              ; set TX bit
         ;ret
 
-_rxdrv_read_sector:
+_rxdrv_check_mounted:
+        lda rxdrv_csr
+        ani RX_UNIT
+        jz _rxdrv_cm_0
+        lda rxdrv_mounted2
+        ora a
+        ret
+_rxdrv_cm_0:
         lda rxdrv_mounted
         ora a
-        jz _rxdrv_seterr
-        
-        ; compute offset into dsk image 
-        ; (rxdrv_track * SECTORS_PER_TRACK + rxdrv_sector) * SECTOR_SIZE
-        ;  max 2002                                        * 128 -> 256256
-        lda rxdrv_track
-        lxi d, SECTORS_PER_TRACK
-        call MulAHL_A_DE  ; ahl <- a * de
-        lda rxdrv_sector
-        dcr a ; track numbers start with 1
-        mov e, a
-        mvi d, 0
-        dad d       ; sector number = cp/m record number
-        ; extent = hl/128, record = hl % 128
-        mov d, h
-        mov e, l
+        ret
 
+_rxdrv_read_sector:
+        call _rxdrv_check_mounted
+        jz _rxdrv_seterr
+
+        call _rxdrv_comp_randrec
+        
+        ; select unit
+        lda rxdrv_csr
+        ani RX_UNIT
+        jnz _rxdrv_rs_u1
+_rxdrv_rs_u0:
         ; a decent FCB reference: http://www.gaby.de/cpm/manuals/archive/cpm22htm/ch5.htm#Table_5-2
         shld fcb1+33  ; random access record for F_READRAND
-         
         lxi d, fcb1
+        jmp _rxdrv_rs_rrand
+_rxdrv_rs_u1:
+        shld fcb2+33  ; random access record for F_READRAND
+        lxi d, fcb2
+_rxdrv_rs_rrand:
         mvi c, F_READRAND
         CALL_BDOS
         ora a
@@ -412,7 +449,45 @@ _rxdrv_write_sector:
         ;--------------------------------- 
 #endif      
 
+        call _rxdrv_check_mounted
+        jz _rxdrv_seterr
+        call _rxdrv_comp_randrec
+
+        ; select unit
+        lda rxdrv_csr
+        ani RX_UNIT
+        jnz _rxdrv_ws_u1
+_rxdrv_ws_u0:
+        ; a decent FCB reference: http://www.gaby.de/cpm/manuals/archive/cpm22htm/ch5.htm#Table_5-2
+        shld fcb1+33  ; random access record for F_READRAND
+        lxi d, fcb1
+        jmp _rxdrv_ws_rrand
+_rxdrv_ws_u1:
+        shld fcb2+33  ; random access record for F_READRAND
+        lxi d, fcb2
+_rxdrv_ws_rrand:
+        mvi c, F_WRITERAND
+        CALL_BDOS
+        ora a
+        jnz _rxdrv_seterr
         jmp _rxdrv_set_done
+
+_rxdrv_comp_randrec:
+        ; compute offset into dsk image 
+        ; (rxdrv_track * SECTORS_PER_TRACK + rxdrv_sector) * SECTOR_SIZE
+        ;  max 2002                                        * 128 -> 256256
+        lda rxdrv_track
+        lxi d, SECTORS_PER_TRACK
+        call MulAHL_A_DE  ; ahl <- a * de
+        lda rxdrv_sector
+        dcr a ; track numbers start with 1
+        mov e, a
+        mvi d, 0
+        dad d       ; sector number = cp/m record number
+        ; extent = hl/128, record = hl % 128
+        ;mov d, h
+        ;mov e, l
+        ret
 
 rxdrv_csr:          .dw 0
 rxdrv_cmd:          .db 0
@@ -424,7 +499,7 @@ rxdrv_go:           .db 0
 rxdrv_bufofs:       .db 0       ; sector buffer read offset during EMPTY
 rxdrv_param_stage:  .db 0
 rxdrv_mounted:      .db 0       ; 0 = not mounted
-
+rxdrv_mounted2:     .db 0       ; 0 = not mounted
 #define BOOT_START      02000q
 #define BOOT_ENTRY      (BOOT_START + 002q)
 #define BOOT_UNIT       (BOOT_START + 010q)
@@ -487,6 +562,63 @@ _rxdrv_1:
         shld r7
         ret
         
+        ; b = unit no
+        ; hl = fcb
+print_fcb:
+        ; unit number
+        mvi a, '0'
+        add b
+        sta _pfcb_buf + 2
+        mov a, m  ; drive no
+        adi 'A'
+        sta _pfcb_buf + 4 ; drive letter
+
+        ; copy name
+        inx h
+        lxi d, _pfcb_buf + 6
+        mvi c, 8
+        call _pfcb_ncpy
+_pfcb_nc2:
+        mvi a, '.'
+        stax d \ inx d
+        ; copy ext
+_pfcb_nc4:
+        mvi c, 3
+        call _pfcb_ncpy
+
+        xchg
+        mvi m, 13 \ inx h
+        mvi m, 10 \ inx h
+        mvi m, '$' \ inx h
+
+        mvi c, C_WRITESTR
+        lxi d, _pfcb_buf
+        JMP_BDOS
+
+
+_pfcb_ncpy:
+        mov a, m
+        cpi ' '
+        jz _pfcb_ncpy_x
+        inx h
+        stax d
+        inx d
+        dcr c
+        jnz _pfcb_ncpy
+        ; skip remainder of input
+_pfcb_ncpy_x:
+        xra a
+        ora c
+        rz
+_pfcb_ncpy_y:        
+        inx h
+        dcr c
+        jnz _pfcb_ncpy_y
+        ret
+
+_pfcb_buf:
+        .db "RX0=X:XXXXXXXX.XXX", 13, 10, "$"
+
 
 
 

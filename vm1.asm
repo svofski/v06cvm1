@@ -54,6 +54,7 @@
 #define DISINT   di
 #define ENAINT   ei
 #define CALL_BDOS call 5
+#define JMP_BDOS  jmp 5
 
 ; for some extreme debugging
 ;#define ENAINT
@@ -74,8 +75,8 @@ HOST_SP .equ $6000      ; attention
         call putsi \ .db "/013-BASIC$"
         #endif
 
-        #ifdef TEST_RXDEV
-        call putsi \ .db "/RX01[", RXIMAGE, "]$"
+        #ifdef TEST_RXDRV
+        call putsi \ .db "/RX01$"
         #endif
 
         #ifdef TEST_SERIOUSLY
@@ -89,6 +90,8 @@ HOST_SP .equ $6000      ; attention
         lxi d, hexstr
         mvi c, 9
         CALL_BDOS
+        #else
+        call putsi \ .db "/NO ROM$"
         #endif
 
         call putsi \ .db "/IO @$"
@@ -101,7 +104,7 @@ HOST_SP .equ $6000      ; attention
         #ifdef ODD_ADDR_CHECK
         call putsi \ .db "/ODD=EVEN$"
         #else
-        call putsi \ .db "/NO ODD CHECK$"
+        call putsi \ .db "/ODD UNCHECKED$"
         #endif
 
         #ifdef HYPERDEBUG
@@ -109,9 +112,9 @@ HOST_SP .equ $6000      ; attention
         #endif
 
         #ifdef DEBUG_OPCODES
-        call putsi \ .db "/DEBUG OPCODES$"
+        call putsi \ .db "/UNDEF OPCODES LOG$"
         #else
-        call putsi \ .db "/UNDEF OPCODES NOT REPORTED$"
+        call putsi \ .db "/UNDEF OPCODES QUIET$"
         #endif
 
         #ifdef TESTBENCH
@@ -326,19 +329,6 @@ around_int_handler:
 #endif
 
 
-;        call putsi \ .db 10, 13, "RX11 TEST", 10, 13, "$"
-;        ; test rxdrv
-;        call rxdrv_mount
-;        lxi b, 7 ; #READ+GO
-;        call write_rxdrv_csr
-;        mvi c, 23    ; sector
-;        call write_rxdrv_data
-;        mvi c, 65    ; track
-;        call write_rxdrv_data
-;
-;        jmp $
-
-
         ;jmp test_mov_1
         ;jmp test_opcodes
 
@@ -382,7 +372,6 @@ hlt
 #ifdef TEST_SERIOUSLY
 test_from_000200:
         call vm1_reset
-        ;lxi h, 200q
         lxi h, rom_start_addr   ; 200q for 791401, 140000q for 013-basic
         shld r7
         jmp vm1_enter_loop
@@ -1659,7 +1648,7 @@ clearmem_l0:
         ;
         ;
 
-        .org $4000
+        ;.org $4000
 
 vm1_reset:
         lxi h, regfile
