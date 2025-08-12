@@ -230,11 +230,11 @@ HOST_SP .equ $6000      ; attention
         lxi h, rst1_handler
         shld 8+1
 
-#ifdef TESTBENCH
-        ; install fake call5
-        mvi a, $c9
-        sta 5
-#else
+;;#ifdef TESTBENCH
+;;        ; install fake call5
+;;        ;mvi a, $c9
+;;        ;sta 5
+;;#else
         ; poll console from the screen interrupt
 install_int_handler:
         lhld $39     ; hope there's a jmp xxxx
@@ -313,7 +313,7 @@ _inth_return: .equ $+1
         jmp 0
 
 around_int_handler:
-#endif
+;;#endif
 
 #ifdef TEST_SERIOUSLY
         #ifndef TESTBENCH
@@ -543,6 +543,15 @@ vm1int_bpt_not:
         jmp tm1_loop_end
 
 vm1int_iorq_not:
+        ;push psw
+        ;push h
+        call putsi \ .db "unknown irq", 13, 10, "$"
+        ;pop h
+        ;pop psw
+        lda intflg
+        mov h, a
+        lda intflg_io
+        mov l, a
         hlt     
         jmp $   ; impossible, stop
 

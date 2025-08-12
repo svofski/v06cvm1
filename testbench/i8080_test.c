@@ -38,6 +38,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
+#include <termios.h>
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -53,6 +54,8 @@
 
 #include "vm1_opcodes.h"
 
+FILE * trace = NULL;
+
 typedef enum {
     ATTR_HOST,
     ATTR_GUEST,
@@ -63,28 +66,28 @@ attr_mode_t attrmode = ATTR_HOST;
 void attr_host()
 {
 #ifdef COLOR
-    fprintf(stderr, "\033[0m");
+    trace && fprintf(trace, "\033[0m");
 #endif
 }
 
 void attr_guest()
 {
 #ifdef COLOR
-    fprintf(stderr, "\033[93m"); // light yellow
+    trace && fprintf(trace, "\033[93m"); // light yellow
 #endif
 }
 
 void attr_reg()
 {
 #ifdef COLOR
-    fprintf(stderr, "\033[96m"); // light cyan
+    trace && fprintf(trace, "\033[96m"); // light cyan
 #endif
 }
 
 void attr_psw()
 {
 #ifdef COLOR
-    fprintf(stderr, "\033[97m"); // light blue
+    trace && fprintf(trace, "\033[97m"); // light blue
 #endif
 }
 
@@ -92,10 +95,10 @@ void attr_diff(int differ)
 {
 #ifdef COLOR
     if (differ) {
-        fprintf(stderr, "\033[48;5;94m");
+        trace && fprintf(trace, "\033[48;5;94m");
     }
     else {
-        fprintf(stderr, "\033[49m");
+        trace && fprintf(trace, "\033[49m");
     }
 #endif
 }
@@ -128,7 +131,7 @@ void load_file(const char* name, int addr, int kvas)
 
     int sz;
     if (!f) {
-        fprintf(stderr, "Unable to open file \"%s\"\n", name);
+        trace && fprintf(trace, "Unable to open file \"%s\"\n", name);
         exit(1);
     }
     sz = 0;
@@ -138,8 +141,8 @@ void load_file(const char* name, int addr, int kvas)
         sz += read;
         load_to += read;
     }
-    fprintf(stderr, "\n*********************************\n");
-    fprintf(stderr, "File \"%s\" loaded, size %d\n", name, sz);
+    trace && fprintf(trace, "\n*********************************\n");
+    trace && fprintf(trace, "File \"%s\" loaded, size %d\n", name, sz);
 
     kvaz(kvas);
 
@@ -193,28 +196,28 @@ void tap_send(tap_t * tap);
 void dump(const char * ff, size_t ret, uint16_t base = 0, int guest = 1)
 {
     kvaz(guest);
-    fprintf(stderr, "%s: %s %lu bytes\n", guest ? "PDP-11" : "CP/M", ff, ret);
+    trace && fprintf(trace, "%s: %s %lu bytes\n", guest ? "PDP-11" : "CP/M", ff, ret);
     for (int i = 0; i < ret + 16; i += 16) {
-        fprintf(stderr, "%04x ", i);
+        trace && fprintf(trace, "%04x ", i);
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
-                fprintf(stderr, "%02x%c", i8080_hal_memory_read_byte(base+i+j, true), j == 7 ? '-' : ' ');
+                trace && fprintf(trace, "%02x%c", i8080_hal_memory_read_byte(base+i+j, true), j == 7 ? '-' : ' ');
             }
             else {
-                fprintf(stderr, "   ");
+                trace && fprintf(trace, "   ");
             }
         }
-        fprintf(stderr, "  ");
+        trace && fprintf(trace, "  ");
         for (int j = 0; j < 16; ++j) {
             if (i + j < ret) {
                 int c = i8080_hal_memory_read_byte(base+i+j, true);
-                fprintf(stderr, "%c", (c >= 0x20 && c < 0x7f) ? c : '.');
+                trace && fprintf(trace, "%c", (c >= 0x20 && c < 0x7f) ? c : '.');
             }
             else {
-                fprintf(stderr, " ");
+                trace && fprintf(trace, " ");
             }
         }
-        fprintf(stderr, "\n");
+        trace && fprintf(trace, "\n");
     }
     kvaz(0);
 }
@@ -244,7 +247,7 @@ void tap_init(tap_t * tap, const char * devtap, uint8_t * rxbuf, uint8_t * txbuf
 
     tap->tx_state = tap->tx_len = tap->txbuf_ofs = tap->readstate = 0;
 
-    fprintf(stderr, "H: succesfully opened tun/tap %s\n", devtap);
+    trace && fprintf(trace, "H: succesfully opened tun/tap %s\n", devtap);
 }
 
 void tap_rx_push(tap_t * tap, uint8_t b)
@@ -305,10 +308,10 @@ unsigned tap_poll(tap_t * tap)
         }
     }
     else {
-        fprintf(stderr, "input buffer overrun, packet dropped\n");
+        trace && fprintf(trace, "input buffer overrun, packet dropped\n");
     }
 
-    //fprintf(stderr, "received packet, rxbuf size=%d\n", tap->rxbuf_size);
+    //trace && fprintf(trace, "received packet, rxbuf size=%d\n", tap->rxbuf_size);
 
     return ret;
 }
@@ -325,7 +328,7 @@ uint8_t tap_read_data(tap_t * tap)
         retval = tap_rx_pop(tap);
         ++bytesread;
         if (tap->rxbuf_size == 0) {
-            //fprintf(stderr, "\nRXBUF empty, POPPED=%d\n", bytesread);
+            //trace && fprintf(trace, "\nRXBUF empty, POPPED=%d\n", bytesread);
             bytesread = 0;
         }
     }
@@ -354,7 +357,7 @@ void tap_write_data(tap_t * tap, uint8_t c)
         tap->txbuf[tap->txbuf_ofs++] = c;
 
         if (tap->txbuf_ofs == tap->tx_len) {
-            fprintf(stderr, "tap_write_data: sending out\n");
+            trace && fprintf(trace, "tap_write_data: sending out\n");
             tap_send(tap);
             tap->tx_len = tap->txbuf_ofs = tap->tx_state = 0;
         }
@@ -405,7 +408,7 @@ int i8080_hal_io_input(int port)
             return tapdev.csr;
         case 0x07:
             ret = tap_read_data(&tapdev);
-            //fprintf(stderr, "[%02x]", ret);
+            //trace && fprintf(trace, "[%02x]", ret);
             return ret;
     }
     return 0;
@@ -430,9 +433,9 @@ int find_in_opcode_handlers(int pc)
 int find_opcode_index(int code)
 {
     const int n = (int)(sizeof(opc_codes)/sizeof(opc_codes[0]));
-    //fprintf(stderr, ": opcode=%06o\n", code);
+    //trace && fprintf(trace, ": opcode=%06o\n", code);
     for (int i = 0; i < n; ++i) {
-        //fprintf(stderr, ": opc_code=%06o opc_mask=%06o  code&mask=%06o\n",
+        //trace && fprintf(trace, ": opc_code=%06o opc_mask=%06o  code&mask=%06o\n",
         //        opc_codes[i], opc_masks[i], code & opc_masks[i]);
         if (opc_codes[i] == (code & opc_masks[i])) {
             return i;
@@ -466,7 +469,7 @@ void print_regs()
         //uint16_t reg = mem[vm1_regfile_addr + i * 2] | (mem[vm1_regfile_addr + i * 2 + 1] << 8);
         uint16_t reg = get_guest_reg(i);
         attr_diff(reg != prev_regs[i]);
-        fprintf(stderr, "%06o ", reg);
+        trace && fprintf(trace, "%06o ", reg);
         prev_regs[i] = reg;
     }
 
@@ -479,7 +482,7 @@ void print_regs()
         if ((psw & 1) == 0) flags[8 - i] = '.';
         psw >>= 1;
     }
-    fprintf(stderr, " %s ", flags);
+    trace && fprintf(trace, " %s ", flags);
 
 }
 
@@ -536,7 +539,7 @@ void bdos_fopen()
     //exit(0);
     cpm_files[0] = fopen(filename, "r");
     if (cpm_files[0] == NULL) {
-        fprintf(stderr, "bdos_open: open error, filename=%s\n", filename);
+        trace && fprintf(trace, "bdos_open: open error, filename=%s\n", filename);
     }
     i8080_setreg_a(2);
 }
@@ -555,13 +558,13 @@ void bdos_readrand()
     get_fcb(fcb1_addr, &fcb);
 
     //for (int i = 0; i < sizeof(fcb); ++i) {
-    //    fprintf(stderr, "%02d:%02x ", i, fcb.bytes[i]);
+    //    trace && fprintf(trace, "%02d:%02x ", i, fcb.bytes[i]);
     //}
-    //fprintf(stderr, "\nra0-2 %02x %02x %02x", fcb.fcb.ra[0], fcb.fcb.ra[1], fcb.fcb.ra[2]);
+    //trace && fprintf(trace, "\nra0-2 %02x %02x %02x", fcb.fcb.ra[0], fcb.fcb.ra[1], fcb.fcb.ra[2]);
 
 
     uint32_t offset = CPM_RECORD_SZ * (fcb.fcb.ra[0] | (fcb.fcb.ra[1] << 8) | (fcb.fcb.ra[2] << 16));
-    //fprintf(stderr, "\nbdos_readrand: offset=%u\n", offset);
+    //trace && fprintf(trace, "\nbdos_readrand: offset=%u\n", offset);
     int result = fseek(cpm_files[0], offset, SEEK_SET);
     if (result < 0) {
         i8080_setreg_a(0xff);
@@ -577,13 +580,80 @@ void bdos_readrand()
         i8080_hal_memory_write_byte(CPM_DMA_ADDR + i, c);
     }
 
-    fprintf(stderr, "\nLOADED SECTOR T:%02d S:%02d ofs=%06x ", 
+    trace && fprintf(trace, "\nLOADED SECTOR T:%02d S:%02d ofs=%06x ", 
             i8080_hal_memory_read_byte(rxdrv_track_addr),
             i8080_hal_memory_read_byte(rxdrv_sector_addr),
             offset);
     dump("", 128, 0x0080, 0);
 
     i8080_setreg_a(0);
+}
+
+struct termios oldt, newt;
+
+void restore_console()
+{
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    trace && fprintf(trace, "restored console mode\n");
+}
+
+void console_raw()
+{
+    // Save old terminal settings
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+
+    // Disable canonical mode and echo
+    newt.c_lflag &= ~(ICANON | ECHO);
+    newt.c_cc[VMIN] = 0;   // Return immediately if no data
+    newt.c_cc[VTIME] = 0;  // No timeout
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    // Set stdin to non-blocking
+    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+
+    atexit(restore_console);
+
+    trace && fprintf(trace, "entered raw console mode\n");
+}
+
+void conio_test()
+{
+    uint8_t ch;
+    while (1) {
+        ssize_t n = read(STDIN_FILENO, &ch, 1);
+        if (n == 1) {
+            printf("You pressed: %c (%u)\n", ch, ch);
+            fflush(stdout);
+            if (ch == 'q') break;
+        }
+        usleep(100000); // Sleep 100ms to avoid busy CPU
+    }
+}
+
+
+
+ssize_t console_n = 0;
+uint8_t console_ch = 0;
+
+void check_console()
+{
+    if (console_n == 0) {
+        console_n = read(STDIN_FILENO, &console_ch, 1);
+    }
+}
+
+uint8_t read_console()
+{
+    if (console_n == 0) {
+        check_console();
+    }
+    uint8_t result = console_ch;
+    console_ch = 0;
+    console_n = 0;
+    return result;
 }
 
 void bdos(int * success)
@@ -598,12 +668,16 @@ void bdos(int * success)
             fflush(stdout);
             break;
         case 6: // console input
-            fprintf(stderr, "------------->\n");
-            fflush(stderr);
-            fflush(stdout);
-            c = getchar();
+            //trace && fprintf(trace, "------------->\n");
+            //fflush(trace);
+            //fflush(stdout);
+            //c = getchar();
+            c = read_console();
             i8080_setreg_a(c);
-            fprintf(stderr, "------------- CONSOLE INPUT: %c 0%03o 0x%02x\n", c, c, c);
+            //if (c != 0) {
+            //    printf("CONSOLE INPUT: %d\n", c);
+            //}
+            //trace && fprintf(trace, "------------- CONSOLE INPUT: %c 0%03o 0x%02x\n", c, c, c);
             break;
         case 9: // print $-terminated string
             attr_guest();
@@ -614,8 +688,9 @@ void bdos(int * success)
             attr_host();
             break;
         case 11: // C_STAT console status
-            i8080_setreg_a(1);
-            i8080_setreg_l(1);
+            check_console();
+            i8080_setreg_a(console_n ? 1 : 0);
+            i8080_setreg_l(console_n ? 1 : 0);
             break;
         case 15: // F_OPEN
             bdos_fopen();
@@ -643,20 +718,30 @@ void execute_test(const char* filename, int success_check) {
     char instr_buf[9];
     char arg_buf[33];
 
-    //memset(mem, 0, 0x10000);
-    i8080_hal_memory_write_byte(5, 0xc3);
-    i8080_hal_memory_write_byte(6, 0x00);
-    i8080_hal_memory_write_byte(7, 0xc0);
-
     load_file(filename, 0x100, 0);  // load runtime under test
 
     //tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x9000]);
     //tap_init(&tapdev, "/dev/net/tun", &mem[0x8000], &mem[0x8000]);
 
-    i8080_hal_memory_write_byte(5, 0xC9);  // Inject RET at 0x0005 to handle "CALL 5".
+    // call 5 -> 0x8888
+    i8080_hal_memory_write_byte(5,   0xc3);
+    i8080_hal_memory_write_byte(5+1, 0x88);
+    i8080_hal_memory_write_byte(5+2, 0x88);
+
+    // rst7 -> 0x8889
+    i8080_hal_memory_write_byte(0x38,   0xc3);
+    i8080_hal_memory_write_byte(0x38+1, 0x89);
+    i8080_hal_memory_write_byte(0x38+2, 0x88);
+
+    i8080_hal_memory_write_byte(0x8888, 0xC9);  // ret from call 5
+    i8080_hal_memory_write_byte(0x8889, 0xC9);  // ret from rst7
+
+    i8080_hal_memory_write_byte(0x5d, ' ');  // empty fcb1
+    i8080_hal_memory_write_byte(0x6d, ' ');  // empty fcb2
+
     i8080_init();
     i8080_jump(0x100);
-    uint64_t cycles = 0;
+    uint64_t cycles = 0, int_cycles = 0;
 
     int kukol = SPEED_FACTOR;
 
@@ -664,10 +749,16 @@ void execute_test(const char* filename, int success_check) {
         //tap_loop(&tapdev, cycles);
 
         int const pc = i8080_pc();
-        //fprintf(stderr, "PC=%04x\n", pc);
+        //fprintf(stdout, "PC=%04x %02x %02x %02x [%04x]=%04x\n", pc,
+        //        i8080_hal_memory_read_byte(pc), 
+        //        i8080_hal_memory_read_byte(pc+1), 
+        //        i8080_hal_memory_read_byte(pc+2),
+        //        i8080_regs_sp(),
+        //        i8080_hal_memory_read_word(i8080_regs_sp())
+        //        );
         if (i8080_hal_memory_read_byte(pc) == 0x76 || i8080_hal_memory_read_byte(pc) == 0xc7) {
-            fprintf(stderr, "\nHLT at %04X Total: %lu cycles. ", pc, cycles);
-            fprintf(stderr, "A=%02x BC=%04x DE=%04x HL=%04x SP=%04x\n",
+            trace && fprintf(trace, "\nHLT at %04X Total: %lu cycles. ", pc, cycles);
+            trace && fprintf(trace, "A=%02x BC=%04x DE=%04x HL=%04x SP=%04x\n",
                     i8080_regs_a(),
                     i8080_regs_bc(), i8080_regs_de(), i8080_regs_hl(), i8080_regs_sp());
 
@@ -685,7 +776,7 @@ void execute_test(const char* filename, int success_check) {
             kvaz(0);
             DisassembleInstruction(insnbuf, pc, 
                     instr_buf, arg_buf);
-            fprintf(stderr, "\n%06o: %-8s%-32s", pc, instr_buf, arg_buf);
+            trace && fprintf(trace, "\n%06o: %-8s%-32s", pc, instr_buf, arg_buf);
 
             print_regs();
 
@@ -704,14 +795,14 @@ void execute_test(const char* filename, int success_check) {
             int executed_opcode = i8080_hal_memory_read_word(vm1_opcode_addr);
             const char * label = opc_labels[opc];
 
-            fprintf(stderr, "opc: %06o %-8s @%04x", executed_opcode, label, opc_addrs[opc]);
+            trace && fprintf(trace, "opc: %06o %-8s @%04x", executed_opcode, label, opc_addrs[opc]);
 
             int index = find_opcode_index(executed_opcode);
             if (index >= 0 && strcmp(label+4, opc_names[index]) == 0) {
-                //fprintf(stderr, " OK\n");
+                //trace && fprintf(trace, " OK\n");
             }
             else {
-                fprintf(stderr, " ERROR: expected opcode %o %s, actual label: %s\n",
+                trace && fprintf(trace, " ERROR: expected opcode %o %s, actual label: %s\n",
                         executed_opcode, opc_names[index], label);
             }
 #endif
@@ -720,10 +811,10 @@ void execute_test(const char* filename, int success_check) {
             uint8_t rcsr = i8080_hal_memory_read_byte(rx_control_reg_addr);
             uint8_t xcsr = i8080_hal_memory_read_byte(tx_control_reg_addr);
 
-            fprintf(stderr, "rx csr: %06o rcsr: %03o xcsr: %03o", rx11csr, rcsr, xcsr);
+            trace && fprintf(trace, "rx csr: %06o rcsr: %03o xcsr: %03o", rx11csr, rcsr, xcsr);
 
             //if (rx11csr & 0100) {
-            //    fprintf(stderr, " interrupt enabled, ha!\n");
+            //    trace && fprintf(trace, " interrupt enabled, ha!\n");
             //    exit(0);
             //}
         }
@@ -731,27 +822,44 @@ void execute_test(const char* filename, int success_check) {
 
 
         //if (mem[pc] == 0xd3) {
-        //    fprintf(stderr, "out %d = %02x\n", mem[pc+1], i8080_regs_a());
+        //    trace && fprintf(trace, "out %d = %02x\n", mem[pc+1], i8080_regs_a());
         //}
 
         //if (pc == 0x6db3) {
-        //    fprintf(stderr, "write HL=%04X\n", i8080_regs_hl());
+        //    trace && fprintf(trace, "write HL=%04X\n", i8080_regs_hl());
         //}
 
-        if (pc == 0x0005) {
+        if (pc == 0x8888) {
+            //printf("bdos @ 8888\n");
             bdos(&success);
         }
+        //if (pc == 5) {
+        //    printf("bdos @ 5 %02x %02x %02x\n",
+        //           i8080_hal_memory_read_byte(5),
+        //           i8080_hal_memory_read_byte(5+1),
+        //           i8080_hal_memory_read_byte(5+2)
+        //           );
+        //}
 
         int instr_cycles = i8080_instruction();
-
         cycles += instr_cycles;
         kukol -= instr_cycles;
-        if (kukol <= 0) {
-            kukol += SPEED_FACTOR;
-            usleep(1);
+        //if (kukol <= 0) {
+        //    kukol += SPEED_FACTOR;
+        //    usleep(1);
+        //}
+        int_cycles += instr_cycles;
+        // something !
+        if (int_cycles > 59904) {
+            int_cycles -= 59904;
+            if (i8080_iff()) {
+                instr_cycles = i8080_execute(0xff); // rst7
+                cycles += instr_cycles;
+            }
         }
+
         //if (i8080_pc() == 0) {
-        //    fprintf(stderr, "\nJump to 0000 from %04X\n", pc);
+        //    trace && fprintf(trace, "\nJump to 0000 from %04X\n", pc);
         //    if (success_check && !success)
         //        exit(1);
         //    return;
@@ -763,6 +871,8 @@ void execute_test(const char* filename, int success_check) {
 
 int main(int argc, char **argv) {
     const char * filename = "vm1.com";
+
+    console_raw();
 
     if (argc > 1) {
         filename = argv[1];

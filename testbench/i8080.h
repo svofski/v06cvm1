@@ -62,4 +62,8 @@ extern void i8080_setreg_h(uint8_t val);
 extern void i8080_setreg_l(uint8_t val);
 extern void i8080_setreg_sp(uint16_t val);
 
+int i8080_execute(int opcode);
+bool i8080_iff();   /* Inner interrupt enable flag, not the same as INTE */
+
+
 #endif

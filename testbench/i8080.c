@@ -328,7 +328,7 @@ static void i8080_retrieve_flags(void) {
     C_FLAG = F & F_CARRY    ? 1 : 0;
 }
 
-static int i8080_execute(int opcode) {
+int i8080_execute(int opcode) {
     int cpu_cycles;
     switch (opcode) {
         case 0x00:            /* nop */
@@ -1809,3 +1809,8 @@ void i8080_setreg_sp(uint16_t val)
 {
     SP = val;
 }
+
+bool i8080_iff(void) {
+    return IFF;
+}
+
