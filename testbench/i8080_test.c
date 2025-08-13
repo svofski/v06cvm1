@@ -662,6 +662,7 @@ void bdos(int * success)
 
     switch (i8080_regs_c()) {
         case 2: // putchar
+        case 4:
             attr_guest();
             putchar((char)i8080_regs_e());
             attr_host();

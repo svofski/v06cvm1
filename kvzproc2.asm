@@ -366,10 +366,13 @@ write_tx_data:
   ;;;;;                   ---     less push around load_dd16, ~ 06:34 
                 mov a, c
                 sta tx_data_reg
-                sta txstrbuf
-                mvi c, 9
-                lxi d, txstrbuf
-                jmp 5
+                ;sta txstrbuf
+                ;mvi c, 9
+                ;lxi d, txstrbuf
+
+                mov e, a
+                mvi c, 2; 4
+                JMP_BDOS
 txstrbuf:       .db 0, '$'
 
 XCSR_INTE       .equ 0100q  ; transmit interrupt enable, XCSR 177564, vector 64

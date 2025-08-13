@@ -230,11 +230,6 @@ HOST_SP .equ $6000      ; attention
         lxi h, rst1_handler
         shld 8+1
 
-;;#ifdef TESTBENCH
-;;        ; install fake call5
-;;        ;mvi a, $c9
-;;        ;sta 5
-;;#else
         ; poll console from the screen interrupt
 install_int_handler:
         lhld $39     ; hope there's a jmp xxxx
@@ -313,7 +308,7 @@ _inth_return: .equ $+1
         jmp 0
 
 around_int_handler:
-;;#endif
+
 
 #ifdef TEST_SERIOUSLY
         #ifndef TESTBENCH
