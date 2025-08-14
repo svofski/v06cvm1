@@ -622,6 +622,4 @@ _pfcb_buf:
 
 
 
-imgname:    .db "RT11SJ01DSK", 0
-;imgname:    .db "STALK   DSK", 0
-;imgname:    .db RXIMAGE, 0
+imgname:    .db RXIMAGE, 0

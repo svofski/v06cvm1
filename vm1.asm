@@ -12,7 +12,7 @@
 ;
 
 ; rx01 image (256256 bytes) in cp/m fcb format 8+3
-#define RXIMAGE   "ADVENT  DSK"
+#define RXIMAGE   "BOOT    DSK"
 
 ; BASIC ROM begins at 0140000, 0xc000
 #ifdef BASIC
@@ -1231,7 +1231,7 @@ test_mov1_pgm:
         .dw 000000q       ; halt
         .dw 177777q       ; TERMINAT *
 
-#ifdef TEST_OPCODES
+#ifdef TESTBENCH
 
 ; test opcodes
         ALIGN_WORD 
@@ -5218,6 +5218,11 @@ test_storeb_7:
 #ifdef TEST_RXDRV
         .include "rxdrv.asm"
         .include "mul24.asm"
+#else
+#ifdef TESTBENCH
+        .include "rxdrv.asm"
+        .include "mul24.asm"
+#endif
 #endif
 
 .end
