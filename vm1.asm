@@ -1231,6 +1231,7 @@ test_mov1_pgm:
         .dw 000000q       ; halt
         .dw 177777q       ; TERMINAT *
 
+#ifdef TEST_OPCODES
 
 ; test opcodes
         ALIGN_WORD 
@@ -1351,6 +1352,7 @@ test_opcode_table:
         .dw 150000q ; BISB 0170000
         .dw 160000q ; SUB 0170000
         .dw 177777q ; TERMINAT *
+#endif
 
 ; test rst1
 rst1_handler:
@@ -1423,6 +1425,7 @@ putsi_l0:
         jnz putsi_l0
         pchl
         
+#ifdef WITH_ASSERT
 assert_e_equals:
         pop h
         shld assert_adr
@@ -1579,7 +1582,7 @@ assert_reg_trap_exp:
         lxi d, hexstr \ mvi c, 9 \ CALL_BDOS
 
         jmp assert_trap_nl_exit
-
+#endif ; WITH_ASSERT
 
         
 hl_to_hexstr:
@@ -4162,7 +4165,9 @@ opc_iot:
 opc_reset:  
         call rcsr_init
         call xcsr_init
+#ifdef TEST_RXDRV
         call rxdrv_init
+#endif
         ret
 opc_emt:
         mvi a, RQ_EMT
@@ -5209,7 +5214,10 @@ test_storeb_7:
 #endif ; ADDRMODES
 
         .include "kvzproc2.asm"
+
+#ifdef TEST_RXDRV
         .include "rxdrv.asm"
         .include "mul24.asm"
+#endif
 
 .end

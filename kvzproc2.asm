@@ -187,10 +187,12 @@ readregDE:
                 cpi 162q   ; 177562 rx data
                 jz read_rx_data
 
+#ifdef TEST_RXDRV
                 cpi 177170q & 377q  ; RX_CSR    RX floppy status reg
                 jz read_rxdrv_csr
                 cpi 177172q & 377q  ; RX_DATA   RX floppy data reg
                 jz read_rxdrv_data
+#endif
 
                 cpi 376q   ; pdp-11 PS
                 jz read_ps177776
@@ -217,10 +219,12 @@ writeregC:
                 cpi 160q   ; 177560 rx control
                 jz write_rx_control
 
+#ifdef TEST_RXDRV
                 cpi 177170q & 377q  ; RX_CSR    RX floppy status reg
                 jz write_rxdrv_csr
                 cpi 177172q & 377q  ; RX_DATA   RX floppy data reg
                 jz write_rxdrv_data
+#endif
                 
                 cpi 376q   ; pdp-11 PS
                 jz write_ps177776
