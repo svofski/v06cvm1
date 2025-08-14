@@ -1,35 +1,12 @@
-// Intel 8080 (KR580VM80A) microprocessor core model
 //
-// Copyright (C) 2012 Alexander Demin <alexander@demin.ws>
+// This is a testbench executing i8080 code.
+// It is custom-tailored to debug PDP-11/06C PDP-11 emulator for Vector-06c
 //
-// Credits
+// Implements a partial CP/M stub and frame interrupts.
 //
-// Viacheslav Slavinsky, Vector-06C FPGA Replica
-// http://code.google.com/p/vector06cc/
+// Requires vm1_opcodes.h, which is automatically generated from TASM symbols
+// by opcodes.awk
 //
-// Dmitry Tselikov, Bashrikia-2M and Radio-86RK on Altera DE1
-// http://bashkiria-2m.narod.ru/fpga.html
-//
-// Ian Bartholomew, 8080/8085 CPU Exerciser
-// http://www.idb.me.uk/sunhillow/8080.html
-//
-// Frank Cringle, The origianal exerciser for the Z80.
-//
-// Thanks to zx.pk.ru and nedopc.org/forum communities.
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; either version 2, or (at your option)
-// any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,9 +29,9 @@
 #include "i8080.h"
 #include "i8080_hal.h"
 
-#include "vm1_opcodes.h"
+#include "vm1_opcodes.h"    // see opcodes.awk
 
-FILE * trace = NULL;
+FILE * trace = NULL;        // set to stderr to trace every pdp-11 instruction and more
 
 typedef enum {
     ATTR_HOST,
@@ -386,38 +363,6 @@ void tap_loop(tap_t * tap, uint64_t cycle)
     }
 }
 
-#if 0
-void i8080_hal_io_output(int port, int value)
-{
-    switch (port) {
-        case 0x05:
-            tapdev.csr |= value;
-            break;
-        case 0x06:
-            tap_write_data(&tapdev, value);
-            break;
-    }
-}
-
-
-int i8080_hal_io_input(int port)
-{
-    int ret = 0;
-    switch (port) {
-        case 0x05:
-            return tapdev.csr;
-        case 0x07:
-            ret = tap_read_data(&tapdev);
-            //trace && fprintf(trace, "[%02x]", ret);
-            return ret;
-    }
-    return 0;
-}
-#endif
-
-//#define SPEED_FACTOR 128
-#define SPEED_FACTOR (1<<31)
-
 int find_in_opcode_handlers(int pc)
 {
     const int nopc = (int)(sizeof(opc_addrs)/sizeof(opc_addrs[0]));
@@ -447,15 +392,11 @@ int find_opcode_index(int code)
 
 uint16_t get_guest_reg(int n)
 {
-    //unsigned char* mem = i8080_hal_memory();
-    //return mem[vm1_regfile_addr + n * 2] | (mem[vm1_regfile_addr + n * 2 + 1] << 8);
     return i8080_hal_memory_read_word(vm1_regfile_addr + n * 2);
 }
 
 void print_regs()
 {
-    //unsigned char* mem = i8080_hal_memory();
-
     static uint16_t prev_regs[9];
 
     attr_reg();
@@ -466,7 +407,6 @@ void print_regs()
         else {
             attr_reg();
         }
-        //uint16_t reg = mem[vm1_regfile_addr + i * 2] | (mem[vm1_regfile_addr + i * 2 + 1] << 8);
         uint16_t reg = get_guest_reg(i);
         attr_diff(reg != prev_regs[i]);
         trace && fprintf(trace, "%06o ", reg);
@@ -535,8 +475,6 @@ void bdos_fopen()
     }
     filename[pos++] = 0;
 
-    //printf("bdos_open: filename=%s\n", filename);
-    //exit(0);
     cpm_files[0] = fopen(filename, "r");
     if (cpm_files[0] == NULL) {
         trace && fprintf(trace, "bdos_open: open error, filename=%s\n", filename);
@@ -557,14 +495,7 @@ void bdos_readrand()
     fcb_t fcb;
     get_fcb(fcb1_addr, &fcb);
 
-    //for (int i = 0; i < sizeof(fcb); ++i) {
-    //    trace && fprintf(trace, "%02d:%02x ", i, fcb.bytes[i]);
-    //}
-    //trace && fprintf(trace, "\nra0-2 %02x %02x %02x", fcb.fcb.ra[0], fcb.fcb.ra[1], fcb.fcb.ra[2]);
-
-
     uint32_t offset = CPM_RECORD_SZ * (fcb.fcb.ra[0] | (fcb.fcb.ra[1] << 8) | (fcb.fcb.ra[2] << 16));
-    //trace && fprintf(trace, "\nbdos_readrand: offset=%u\n", offset);
     int result = fseek(cpm_files[0], offset, SEEK_SET);
     if (result < 0) {
         i8080_setreg_a(0xff);
@@ -669,16 +600,8 @@ void bdos(int * success)
             fflush(stdout);
             break;
         case 6: // console input
-            //trace && fprintf(trace, "------------->\n");
-            //fflush(trace);
-            //fflush(stdout);
-            //c = getchar();
             c = read_console();
             i8080_setreg_a(c);
-            //if (c != 0) {
-            //    printf("CONSOLE INPUT: %d\n", c);
-            //}
-            //trace && fprintf(trace, "------------- CONSOLE INPUT: %c 0%03o 0x%02x\n", c, c, c);
             break;
         case 9: // print $-terminated string
             attr_guest();
@@ -700,12 +623,6 @@ void bdos(int * success)
             bdos_fclose();
             break;
         case 33: // F_READRAND
-            //i8080_setreg_h(rand());
-            //i8080_setreg_l(rand());
-            //i8080_setreg_d(rand());
-            //i8080_setreg_e(rand());
-            //i8080_setreg_b(rand());
-            //i8080_setreg_c(rand());
             bdos_readrand();
             break;
     }
@@ -743,8 +660,6 @@ void execute_test(const char* filename, int success_check) {
     i8080_init();
     i8080_jump(0x100);
     uint64_t cycles = 0, int_cycles = 0;
-
-    int kukol = SPEED_FACTOR;
 
     while (1) {
         //tap_loop(&tapdev, cycles);
@@ -813,44 +728,16 @@ void execute_test(const char* filename, int success_check) {
             uint8_t xcsr = i8080_hal_memory_read_byte(tx_control_reg_addr);
 
             trace && fprintf(trace, "rx csr: %06o rcsr: %03o xcsr: %03o", rx11csr, rcsr, xcsr);
-
-            //if (rx11csr & 0100) {
-            //    trace && fprintf(trace, " interrupt enabled, ha!\n");
-            //    exit(0);
-            //}
         }
-
-
-
-        //if (mem[pc] == 0xd3) {
-        //    trace && fprintf(trace, "out %d = %02x\n", mem[pc+1], i8080_regs_a());
-        //}
-
-        //if (pc == 0x6db3) {
-        //    trace && fprintf(trace, "write HL=%04X\n", i8080_regs_hl());
-        //}
 
         if (pc == 0x8888) {
-            //printf("bdos @ 8888\n");
             bdos(&success);
         }
-        //if (pc == 5) {
-        //    printf("bdos @ 5 %02x %02x %02x\n",
-        //           i8080_hal_memory_read_byte(5),
-        //           i8080_hal_memory_read_byte(5+1),
-        //           i8080_hal_memory_read_byte(5+2)
-        //           );
-        //}
 
         int instr_cycles = i8080_instruction();
         cycles += instr_cycles;
-        kukol -= instr_cycles;
-        //if (kukol <= 0) {
-        //    kukol += SPEED_FACTOR;
-        //    usleep(1);
-        //}
         int_cycles += instr_cycles;
-        // something !
+        // cycles are not v06c-aligned by why not use 59904 as a lucky number anyway
         if (int_cycles > 59904) {
             int_cycles -= 59904;
             if (i8080_iff()) {
@@ -858,13 +745,6 @@ void execute_test(const char* filename, int success_check) {
                 cycles += instr_cycles;
             }
         }
-
-        //if (i8080_pc() == 0) {
-        //    trace && fprintf(trace, "\nJump to 0000 from %04X\n", pc);
-        //    if (success_check && !success)
-        //        exit(1);
-        //    return;
-        //}
     }
 
 
